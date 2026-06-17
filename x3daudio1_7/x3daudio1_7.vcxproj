@@ -218,6 +218,8 @@
     <ClInclude Include="xaudio2-hook\util.h" />
     <ClInclude Include="xaudio2-hook\VoiceSends.h" />
     <ClInclude Include="xaudio2-hook\XAPO\HrtfEffect.h" />
+    <ClInclude Include="xaudio2-hook\XAPO\SphEffect.h" />
+    <ClInclude Include="xaudio2-hook\XAPO\sph_math.h" />
     <ClInclude Include="xaudio2-hook\proxy\XAudio2MasteringVoiceProxy.h" />
     <ClInclude Include="xaudio2-hook\proxy\XAudio2Proxy.h" />
     <ClInclude Include="xaudio2-hook\proxy\XAudio2ProxyFactory.h" />
@@ -285,6 +287,13 @@
     <ClCompile Include="x3daudio-hook\x3daudio_hook.cpp" />
     <ClCompile Include="xaudio2-hook\creation_hook.cpp" />
     <ClCompile Include="xaudio2-hook\XAPO\HrtfEffect.cpp" />
+    <ClCompile Include="xaudio2-hook\XAPO\SphEffect.cpp" />
+    <ClCompile Include="xaudio2-hook\XAPO\sph_math.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="xaudio2-hook\proxy\XAudio2MasteringVoiceProxy.cpp" />
     <ClCompile Include="xaudio2-hook\proxy\XAudio2Proxy.cpp" />
     <ClCompile Include="xaudio2-hook\proxy\XAudio2ProxyFactory.cpp" />

@@ -7,8 +7,6 @@
 
 #include <memory>
 #include <functional>
-#include "hrtf/IHrtfDataSet.h"
-#include <memory>
 
 class ISpatializedDataExtractor;
 class AudioGraphMapper;
@@ -33,7 +31,7 @@ public:
 	DECLARE_PROTECT_FINAL_CONSTRUCT()
 
 public:
-	HRESULT static CreateInstance(IUnknown * original, REFIID riid, void ** ppvObject, std::shared_ptr<IHrtfDataSet> hrtfData, ISpatializedDataExtractor & spatializedDataExtractor);
+	HRESULT static CreateInstance(IUnknown * original, REFIID riid, void ** ppvObject, ISpatializedDataExtractor & spatializedDataExtractor);
 	HRESULT static CreateActualDebugInstance(IUnknown * original, REFIID riid, void ** ppvObject);
 public:
 

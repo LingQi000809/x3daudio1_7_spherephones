@@ -18,6 +18,7 @@
 #include <XAPO.h>
 #include "xaudio2-hook/HrtfXapoParam.h"
 #include "XAPO/HrtfEffect.h"
+#include "XAPO/SphEffect.h"
 
 const XAUDIO2_VOICE_SENDS AudioGraphMapper::_emptySends = empty_sends();
 
@@ -142,15 +143,15 @@ IXAudio2MasteringVoice* AudioGraphMapper::CreateMasteringVoice(UINT32 InputChann
 {
 	auto proxyVoice = new XAudio2MasteringVoiceProxy(InputChannels, InputSampleRate, Flags, DeviceIndex, from_XAUDIO2_EFFECT_CHAIN(pEffectChain));
 
-	// For HRTF only two-channel mastering voice makes sense.
+	// N-channel mastering voice for the spherephone (kNumDrivers in SphEffect.h).
 	IXAudio2MasteringVoice * actualVoiceRawPtr;
-	_xaudio.CreateMasteringVoice(&actualVoiceRawPtr, 2, InputSampleRate, Flags, DeviceIndex, pEffectChain);
+	_xaudio.CreateMasteringVoice(&actualVoiceRawPtr, SphXapoEffect::kNumDrivers, InputSampleRate, Flags, DeviceIndex, pEffectChain);
 	const std::shared_ptr<IXAudio2MasteringVoice> actualVoice(actualVoiceRawPtr, [](IXAudio2MasteringVoice * voice) { voice->DestroyVoice(); });
 
 	{
 		std::unique_ptr<Node> node = std::make_unique<Node>();
 		node->inputSampleRate = InputSampleRate;
-		node->inputChannelsCount = 2;
+		node->inputChannelsCount = SphXapoEffect::kNumDrivers;
 		node->actualProcessingStage = std::numeric_limits<UINT32>::max();
 		node->mainOutputChannelsCount = pEffectChain ? pEffectChain->pEffectDescriptors[pEffectChain->EffectCount - 1].OutputChannels : node->inputChannelsCount;
 		node->proxyVoice.reset(proxyVoice);
@@ -279,8 +280,8 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 			if (node->mainOutputChannelsCount > 2)
 				logger::logRelease(L"WARNING: onSetOutputMatrix ", source, " Trying to spatialize voice with more than two channels");
 
-			if (destinationNode->inputChannelsCount != 2)
-				logger::logRelease(L"WARNING: onSetOutputMatrix ", source, " Trying to send spatialized sound to non-stereo voice ", destinationNode->proxyVoice.get());
+			if (destinationNode->inputChannelsCount != SphXapoEffect::kNumDrivers)
+				logger::logRelease(L"WARNING: onSetOutputMatrix ", source, " Trying to send spatialized sound to voice with wrong channel count ", destinationNode->proxyVoice.get());
 
 			if (!tailVoiceDescriptor.isSpatialized)
 			{
@@ -289,7 +290,7 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 				XAUDIO2_EFFECT_DESCRIPTOR effectDesc;
 				effectDesc.pEffect = static_cast<IUnknown *>(static_cast<IXAPOParameters *>(_hrtfEffectFactory()));
 				effectDesc.InitialState = false;
-				effectDesc.OutputChannels = 2;
+				effectDesc.OutputChannels = SphXapoEffect::kNumDrivers;
 
 				effect_chain hrtfEffectChain{ effectDesc };
 				tailVoiceDescriptor.voice = createTailVoice(node, destinationNode, hrtfEffectChain);
@@ -331,16 +332,18 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 			if (destinationNode->inputChannelsCount == clientMatrix.GetDestinationCount())
 			{
 				matrix = std::move(clientMatrix);
-				//matrix = ChannelMatrix(clientMatrix.getSourceCount(), clientMatrix.getDestinationCount());
+			}
+			else if (destinationNode->inputChannelsCount == SphXapoEffect::kNumDrivers)
+			{
+				matrix = SphXapoEffect::buildNonSpatialMatrix(clientMatrix);
 			}
 			else if (destinationNode->inputChannelsCount == 2)
 			{
 				matrix = adaptChannelMatrixToStereoOutput(clientMatrix);
-				//matrix = ChannelMatrix(clientMatrix.getSourceCount(), 2);
 			}
 			else
 			{
-				throw std::logic_error("Sender output channels count does not match sendee input channels count and sendee input channels count is not 2. That should not have happened.");
+				throw std::logic_error("Sender output channels count does not match sendee input channels count and sendee input channels count is not 2 or 8. That should not have happened.");
 			}
 
 			std::vector<float> values;

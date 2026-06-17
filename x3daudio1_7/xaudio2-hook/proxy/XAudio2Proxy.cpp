@@ -2,6 +2,7 @@
 #include "XAudio2Proxy.h"
 #include "graph/AudioGraphMapper.h"
 #include "XAPO/HrtfEffect.h"
+#include "XAPO/SphEffect.h"
 
 #include "logger.h"
 #include "util.h"
@@ -11,15 +12,15 @@ XAudio2Proxy::XAudio2Proxy()
 	logger::logDebug("Constructing XAudio2Proxy");
 }
 
-HRESULT XAudio2Proxy::CreateInstance(IUnknown * original, REFIID riid, void ** ppvObject, std::shared_ptr<IHrtfDataSet> hrtfData, ISpatializedDataExtractor & spatializedDataExtractor)
+HRESULT XAudio2Proxy::CreateInstance(IUnknown * original, REFIID riid, void ** ppvObject, ISpatializedDataExtractor & spatializedDataExtractor)
 {
 	auto self = new ATL::CComObjectNoLock<XAudio2Proxy>;
 
 	self->SetVoid(nullptr);
 
-	auto hrtfEffectFactory = [hrtfData = std::move(hrtfData)]()
+	auto hrtfEffectFactory = []()
 	{
-		auto instance = new HrtfXapoEffect(hrtfData);
+		auto instance = new SphXapoEffect();
 		instance->Initialize(nullptr, 0);
 		return instance;
 	};

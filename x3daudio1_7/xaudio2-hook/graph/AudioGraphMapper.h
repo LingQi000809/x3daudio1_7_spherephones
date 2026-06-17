@@ -9,12 +9,12 @@
 #include <functional>
 
 
-class HrtfXapoEffect;
+class SphXapoEffect;
 class ISpatializedDataExtractor;
 class XAudio2SourceVoiceProxy;
 class XAudio2VoiceProxy;
 
-typedef std::function<HrtfXapoEffect* ()> hrtf_effect_factory;
+typedef std::function<SphXapoEffect* ()> hrtf_effect_factory;
 
 class TailVoiceDescriptor
 {
