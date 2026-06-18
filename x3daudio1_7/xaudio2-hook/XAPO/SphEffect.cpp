@@ -264,6 +264,12 @@ const std::array<float, SphericalHarmonicsEngine::kAmbi>& SphericalHarmonicsEngi
     return objectY;
 }
 
+void SphericalHarmonicsEngine::getTargetGains(float out[kNumDrivers]) const
+{
+    for (int d = 0; d < kNumDrivers; ++d)
+        out[d] = smoothedG[d].getTargetValue();
+}
+
 // =============================================================================
 // SphXapoEffect
 // =============================================================================
@@ -392,6 +398,15 @@ void SphXapoEffect::computeGains(float azimuthRad, float elevationRad, float vol
     float Y_src[SphericalHarmonicsEngine::kAmbi] = {};
     getRSH(SphericalHarmonicsEngine::kOrder, src_dir_deg, 1, Y_src);
     _engine.setObjectRSH(Y_src, volume);
+
+    static int throttle = 0;
+    if (++throttle >= 100)
+    {
+        throttle = 0;
+        float gains[SphericalHarmonicsEngine::kNumDrivers];
+        _engine.getTargetGains(gains);
+        logger::logSpatialGains(src_dir_deg[0], src_dir_deg[1], volume, gains, SphericalHarmonicsEngine::kNumDrivers);
+    }
 }
 
 // the audio hot path, called by XAudio2 for every buffer (~every 10ms).

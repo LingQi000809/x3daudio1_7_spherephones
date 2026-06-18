@@ -20,6 +20,7 @@ public:
     void setTargetValue(float newValue);
     float getNextValue();
     float getCurrentValue() const;
+    float getTargetValue() const { return target; }
 
 private:
     int rampSamples = 1;
@@ -73,6 +74,7 @@ public:
     float getNextGain(int driverIndex);
     void setObjectRSH(const float* Y_src, float radiusGain = 1.0f);
     const std::array<float, kAmbi>& getObjectRSH() const;
+    void getTargetGains(float out[kNumDrivers]) const;
 
 private:
     float D_[kNumDrivers][kAmbi] = {};        // ambisonic decoder matrix
