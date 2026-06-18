@@ -1,7 +1,7 @@
+#include "stdafx.h"
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <algorithm>
-#include "stdafx.h"
 #include "SphEffect.h"
 #include "sph_math.h"
 #include "logger.h"
