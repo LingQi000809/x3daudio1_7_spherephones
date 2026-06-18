@@ -343,7 +343,7 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 			}
 			else
 			{
-				throw std::logic_error("Sender output channels count does not match sendee input channels count and sendee input channels count is not 2 or 8. That should not have happened.");
+				throw std::logic_error("Sender output channels count does not match sendee input channels count and sendee input channels count is not 2 or 10. That should not have happened.");
 			}
 
 			std::vector<float> values;

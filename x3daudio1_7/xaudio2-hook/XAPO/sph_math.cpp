@@ -9,14 +9,14 @@
 #define ORDER2NSH(order) ((order+1)*(order+1))
 #define SQRT4PI ( 3.544907701811032f )
 
-void* malloc1d(size_t dim1_data_size)
-{
-    return malloc(dim1_data_size);
+void* malloc1d(size_t dim1_data_size) {
+    void *ptr = malloc(dim1_data_size);
+    return ptr;
 }
 
-void* calloc1d(size_t dim1, size_t data_size)
-{
-    return calloc(dim1, data_size);
+void* calloc1d(size_t dim1, size_t data_size) {
+    void *ptr = calloc(dim1, data_size);
+    return ptr;
 }
 
 void utility_svsmul(float* a, const float* s, const int len, float* c)
@@ -44,18 +44,20 @@ void simple_sscal(int N, float alpha, float* X)
         X[i] *= alpha;
 }
 
-static const long double factorials_21[21] = {
-    1.0, 1.0, 2.0, 6.0, 24.0, 120.0, 720.0, 5040.0, 40320.0, 362880.0, 3628800.0, 39916800.0,
-    479001600.0, 6.2270208e9, 8.71782891e10, 1.307674368000000e12, 2.092278988800000e13,
-    3.556874280960000e14, 6.402373705728000e15, 1.216451004088320e17, 2.432902008176640e18
-};
-
-static long double factorial(int n)
+static const long double factorials_21[21] =
+{1.0, 1.0, 2.0, 6.0, 24.0, 120.0, 720.0, 5040.0, 40320.0, 362880.0, 3628800.0, 39916800.0, 479001600.0, 6.2270208e9, 8.71782891e10, 1.307674368000000e12, 2.092278988800000e13, 3.556874280960000e14, 6.402373705728000e15, 1.216451004088320e17, 2.432902008176640e18};
+long double factorial(int n)
 {
-    if (n < 21) return factorials_21[n];
-    long double ff = 1.0;
-    for (int i = 1; i <= n; i++) ff *= (long double)i;
-    return ff;
+    int i;
+    long double ff;
+    if(n<21)
+        return factorials_21[n];
+    else{
+        ff = 1.0;
+        for(i = 1; i<=n; i++)
+            ff *= (long double)i;
+        return ff;
+    }
 }
 
 void getLoudspeakerDecoderMtx(float* ls_dirs_deg, int nLS, int order, float* decMtx)
@@ -231,28 +233,194 @@ void unnorm_legendreP(int n, double* x, int lenX, double* y  /* FLAT: (n+1) x le
     free(sqrt_n);
 }
 
-float L2_norm3(float v[3])
-{
-    return sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+float L2_norm3(float v[3]) {
+    return sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
 }
 
-void cart2sph(float* cart, int nDirs, int anglesInDegreesFLAG, float* sph)
+void cart2sph(float* cart,
+              int nDirs,
+              int anglesInDegreesFLAG,
+              float* sph)
 {
     int i;
     float hypotxy;
 
-    for (i = 0; i < nDirs; i++) {
-        hypotxy     = sqrtf(cart[i * 3] * cart[i * 3] + cart[i * 3 + 1] * cart[i * 3 + 1]);
-        sph[i * 3]     = atan2f(cart[i * 3 + 1], cart[i * 3]);
-        sph[i * 3 + 1] = atan2f(cart[i * 3 + 2], hypotxy);
-        sph[i * 3 + 2] = L2_norm3(&cart[i * 3]);
+    for(i=0; i<nDirs; i++){
+        hypotxy = sqrtf(cart[i*3]*cart[i*3] + cart[i*3+1]*cart[i*3+1]);
+        sph[i*3]   = atan2f(cart[i*3+1], cart[i*3]);
+        sph[i*3+1] = atan2f(cart[i*3+2], hypotxy);
+        sph[i*3+2] = L2_norm3(&cart[i*3]);
     }
 
     /* Return in degrees instead... */
-    if (anglesInDegreesFLAG) {
-        for (i = 0; i < nDirs; i++) {
-            sph[i * 3]     *= (180.0f / SAF_PI);
-            sph[i * 3 + 1] *= (180.0f / SAF_PI);
+    if(anglesInDegreesFLAG){
+        for(i=0; i<nDirs; i++){
+            sph[i*3] *= (180.0f/SAF_PI);
+            sph[i*3+1] *= (180.0f/SAF_PI);
         }
     }
+}
+
+/* ===== Helpers for VBAP / AllRAD (no external deps) ===== */
+
+static void sph2cart_unit(float az_deg, float el_deg, float v[3])
+{
+    float az = az_deg * (SAF_PI/180.0f);
+    float el = el_deg * (SAF_PI/180.0f);
+    float ce = cosf(el);
+    v[0] = ce * cosf(az);
+    v[1] = ce * sinf(az);
+    v[2] = sinf(el);
+}
+
+static void cart2sph_unit(const float v[3], float* az_deg, float* el_deg)
+{
+    float hypotxy = sqrtf(v[0]*v[0] + v[1]*v[1]);
+    *az_deg = atan2f(v[1], v[0]) * (180.0f/SAF_PI);
+    *el_deg = atan2f(v[2], hypotxy) * (180.0f/SAF_PI);
+}
+
+/* Invert row-major 3x3 matrix. Returns 1 on success, 0 if singular. */
+static int invert3x3(const float m[9], float inv[9])
+{
+    float det = m[0]*(m[4]*m[8] - m[5]*m[7])
+              - m[1]*(m[3]*m[8] - m[5]*m[6])
+              + m[2]*(m[3]*m[7] - m[4]*m[6]);
+    if (fabsf(det) < 1e-12f)
+        return 0;
+    float invDet = 1.0f/det;
+    inv[0] =  (m[4]*m[8] - m[5]*m[7]) * invDet;
+    inv[1] = -(m[1]*m[8] - m[2]*m[7]) * invDet;
+    inv[2] =  (m[1]*m[5] - m[2]*m[4]) * invDet;
+    inv[3] = -(m[3]*m[8] - m[5]*m[6]) * invDet;
+    inv[4] =  (m[0]*m[8] - m[2]*m[6]) * invDet;
+    inv[5] = -(m[0]*m[5] - m[2]*m[3]) * invDet;
+    inv[6] =  (m[3]*m[7] - m[4]*m[6]) * invDet;
+    inv[7] = -(m[0]*m[7] - m[1]*m[6]) * invDet;
+    inv[8] =  (m[0]*m[4] - m[1]*m[3]) * invDet;
+    return 1;
+}
+
+void vbap3D_oneSource(float src_az_deg,
+                      float src_el_deg,
+                      float* ls_dirs_deg,
+                      int nLS,
+                      int* faces,
+                      int nFaces,
+                      float* gains)
+{
+    int f, c;
+    float p[3];
+    sph2cart_unit(src_az_deg, src_el_deg, p);
+
+    /* Search faces for the one giving the largest minimum gain. For an
+     * interior point this picks the unique triangle with all g>=0. For
+     * edge/vertex/coplanar cases it picks one of the (tied) candidates. */
+    int bestFace = -1;
+    float bestMin = -1e30f;
+    float bestG[3] = {0.0f, 0.0f, 0.0f};
+
+    for (f = 0; f < nFaces; f++) {
+        int i = faces[3*f+0];
+        int j = faces[3*f+1];
+        int k = faces[3*f+2];
+        /* L has rows = speaker unit vectors, so VBAP gives g = p * L^-1. */
+        float L[9];
+        sph2cart_unit(ls_dirs_deg[2*i+0], ls_dirs_deg[2*i+1], &L[0]);
+        sph2cart_unit(ls_dirs_deg[2*j+0], ls_dirs_deg[2*j+1], &L[3]);
+        sph2cart_unit(ls_dirs_deg[2*k+0], ls_dirs_deg[2*k+1], &L[6]);
+        float Linv[9];
+        if (!invert3x3(L, Linv))
+            continue;
+        float g[3];
+        for (c = 0; c < 3; c++)
+            g[c] = p[0]*Linv[0*3+c] + p[1]*Linv[1*3+c] + p[2]*Linv[2*3+c];
+        float mn = g[0];
+        if (g[1] < mn) mn = g[1];
+        if (g[2] < mn) mn = g[2];
+        if (mn > bestMin) {
+            bestMin = mn;
+            bestFace = f;
+            bestG[0] = g[0]; bestG[1] = g[1]; bestG[2] = g[2];
+        }
+    }
+
+    for (int n = 0; n < nLS; n++)
+        gains[n] = 0.0f;
+
+    if (bestFace >= 0) {
+        /* Clip negatives (handles edge/coplanar cases) and unit-energy normalize. */
+        if (bestG[0] < 0.0f) bestG[0] = 0.0f;
+        if (bestG[1] < 0.0f) bestG[1] = 0.0f;
+        if (bestG[2] < 0.0f) bestG[2] = 0.0f;
+        float E = bestG[0]*bestG[0] + bestG[1]*bestG[1] + bestG[2]*bestG[2];
+        if (E > 1e-20f) {
+            float s = 1.0f/sqrtf(E);
+            bestG[0] *= s; bestG[1] *= s; bestG[2] *= s;
+        }
+        gains[faces[3*bestFace+0]] = bestG[0];
+        gains[faces[3*bestFace+1]] = bestG[1];
+        gains[faces[3*bestFace+2]] = bestG[2];
+    }
+}
+
+void getLoudspeakerDecoderMtx_AllRAD(float* ls_dirs_deg,
+                                     int nLS,
+                                     int* faces,
+                                     int nFaces,
+                                     int order,
+                                     float* decMtx)
+{
+    int i, m, d;
+    int nSH = (order+1)*(order+1);
+
+    /* Generate Fibonacci-sphere virtual loudspeaker grid. AllRAD only
+     * requires the grid to be approximately uniform for SH integration;
+     * it does not need to be a strict t-design. N=512 gives <<1% SH
+     * integration error at order 2. */
+    const int N = 512;
+    float* td_dirs_deg = (float*)malloc1d(N * 2 * sizeof(float));
+    const float ga = SAF_PI * (3.0f - sqrtf(5.0f)); /* golden angle */
+    for (i = 0; i < N; i++) {
+        float z = 1.0f - 2.0f*((float)i + 0.5f)/(float)N;
+        float r = sqrtf(1.0f - z*z);
+        float theta = ga * (float)i;
+        float v[3] = { r*cosf(theta), r*sinf(theta), z };
+        cart2sph_unit(v, &td_dirs_deg[2*i+0], &td_dirs_deg[2*i+1]);
+    }
+
+    /* SH at virtual speakers: nSH x N row-major. Then scale by 1/sqrt(4π)
+     * to match the SAF AllRAD formula (saf_hoa_internal.c:144). */
+    float* Y_td = (float*)malloc1d(nSH * N * sizeof(float));
+    getRSH(order, td_dirs_deg, N, Y_td);
+    {
+        float scale_Y = 1.0f / sqrtf(4.0f * SAF_PI);
+        simple_sscal(nSH * N, scale_Y, Y_td);
+    }
+
+    /* VBAP gains for each virtual speaker onto the real loudspeakers:
+     * G_td is N x nLS row-major. */
+    float* G_td = (float*)calloc1d((size_t)N * nLS, sizeof(float));
+    for (i = 0; i < N; i++) {
+        vbap3D_oneSource(td_dirs_deg[2*i+0], td_dirs_deg[2*i+1],
+                         ls_dirs_deg, nLS,
+                         faces, nFaces,
+                         &G_td[(size_t)i*nLS]);
+    }
+
+    /* decMtx[d][m] = (4π/N) * sum_i G_td[i][d] * Y_td[m][i]
+     * (saf_hoa_internal.c:147-151). */
+    float decScale = 4.0f * SAF_PI / (float)N;
+    for (d = 0; d < nLS; d++) {
+        for (m = 0; m < nSH; m++) {
+            float sum = 0.0f;
+            for (i = 0; i < N; i++)
+                sum += G_td[(size_t)i*nLS + d] * Y_td[(size_t)m*N + i];
+            decMtx[d*nSH + m] = decScale * sum;
+        }
+    }
+
+    free(td_dirs_deg);
+    free(Y_td);
+    free(G_td);
 }
