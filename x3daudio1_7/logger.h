@@ -39,4 +39,6 @@ namespace logger
 		details::apped_to_stream(ss, t1, ts ...);
 		details::log(ss.str());
 	}
+
+	void logSpatialGains(float azDeg, float elDeg, float volume, const float* gains, int numGains);
 }
