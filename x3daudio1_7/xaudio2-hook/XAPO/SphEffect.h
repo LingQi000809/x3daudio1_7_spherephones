@@ -100,12 +100,21 @@ public:
     static constexpr int kNumBassDrivers = 2;
     static constexpr int kNumDrivers     = SphericalHarmonicsEngine::kNumDrivers + kNumBassDrivers; // 10
 
+    // 1-indexed for the interface; The index corresponds to the driver index, ordered in the same way as the kDriverPositionsDeg table in SphEffect.cpp.
+    // [Left Top, Left Back, Left Front, Left Bottom, Right Top, Right Back, Right Front, Right Bottom]
+    static constexpr int kOutputChannelToDriver[8] = {8, 9, 10, 7, 3, 4, 5, 2};
+    static constexpr int kBassLeftOut  = 6;
+    static constexpr int kBassRightOut = 1;
+
     // constants match kGainRampSeconds in Spherephones-Bela/render.cpp
     // Crossover frequency dividing the small-driver HPF from the bass LPF.
     static constexpr float kCrossoverHz = 200.0f;
     static constexpr double kGainRampSeconds = 0.02;  // 20 ms 
     // 0.0 = fully mono bass (both subs identical), 1.0 = current full L/R split.
     static constexpr float kBassPanAmount = 0.f;
+
+    // The volume we receive from xaudio is too low. Multiple by this amount to amplify sounds.
+    static constexpr float volumeMultipler = 10;
     // --------------------------------------------------------------------
 
     explicit SphXapoEffect();

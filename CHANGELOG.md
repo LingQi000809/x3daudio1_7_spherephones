@@ -1,5 +1,8 @@
 # Changelog for XAudio HRTF
 
+### Jun 2026
+* Adapted to Spherephones rendering intead of HRTF. 
+
 ### 2.0 (4 Jul 2017)
 * Again some refactoring and prettification of code
 * Now different ways of transport spatial data from X3DAudio to XAudio are supported

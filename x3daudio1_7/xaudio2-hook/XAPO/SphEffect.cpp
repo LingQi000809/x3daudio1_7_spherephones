@@ -380,7 +380,7 @@ HRESULT SphXapoEffect::LockForProcess(
 
         _engine.prepare(_inputFormat.nSamplesPerSec, kGainRampSeconds);
 
-        // Initialize crossover filters now that the sample rate is known.
+        // Initialize crossover filters
         for (int d = 0; d < SphericalHarmonicsEngine::kNumDrivers; ++d)
             _biquadHP[d].setHighpass(_inputFormat.nSamplesPerSec, kCrossoverHz);
         for (int d = 0; d < kNumBassDrivers; ++d)
@@ -397,7 +397,7 @@ void SphXapoEffect::computeGains(float azimuthRad, float elevationRad, float vol
                               elevationRad * (180.0f / 3.14159265358979323846f)};
     float Y_src[SphericalHarmonicsEngine::kAmbi] = {};
     getRSH(SphericalHarmonicsEngine::kOrder, src_dir_deg, 1, Y_src);
-    _engine.setObjectRSH(Y_src, volume);
+    _engine.setObjectRSH(Y_src, volume * volumeMultipler);
 
     static int throttle = 0;
     if (++throttle >= 100)
@@ -405,7 +405,7 @@ void SphXapoEffect::computeGains(float azimuthRad, float elevationRad, float vol
         throttle = 0;
         float gains[SphericalHarmonicsEngine::kNumDrivers];
         _engine.getTargetGains(gains);
-        logger::logSpatialGains(src_dir_deg[0], src_dir_deg[1], volume, gains, SphericalHarmonicsEngine::kNumDrivers);
+        logger::logSpatialGains(src_dir_deg[0], src_dir_deg[1], volume * volumeMultipler, gains, SphericalHarmonicsEngine::kNumDrivers);
     }
 }
 
@@ -451,16 +451,20 @@ void SphXapoEffect::Process(
             float bassDiff = 0.5f * (bassL - bassR);
             float bassLOut = bassMono + kBassPanAmount * bassDiff;
             float bassROut = bassMono - kBassPanAmount * bassDiff;
-            // Bass drivers occupy output channels 8 and 9 (after the 8 small drivers).
+            // Bass drivers occupy output channels kBassLeftOut and kBassRightOut.
             // Equivalent to Bela's audioWrite(context, n, kBassLeftOut/kBassRightOut, ...).
-            pOutput[n * kNumDrivers + SphericalHarmonicsEngine::kNumDrivers]     = _biquadLP[0].process(bassLOut);
-            pOutput[n * kNumDrivers + SphericalHarmonicsEngine::kNumDrivers + 1] = _biquadLP[1].process(bassROut);
+            // pOutput[n * kNumDrivers + SphericalHarmonicsEngine::kNumDrivers]     = _biquadLP[0].process(bassLOut);
+            // pOutput[n * kNumDrivers + SphericalHarmonicsEngine::kNumDrivers + 1] = _biquadLP[1].process(bassROut);
+            pOutput[n * kNumDrivers + kBassLeftOut -1]  = _biquadLP[0].process(bassLOut);
+            pOutput[n * kNumDrivers + kBassRightOut -1] = _biquadLP[1].process(bassROut);
 
-            // Small drivers occupy output channels 0–7, matching kDriverPositionsDeg order.
-            // No kOutputChannelToDriver remapping needed (unlike Bela): XAudio2 channel N maps directly to the Nth output of the mastering voice.
+            // Small drivers occupy output channels listed in kOutputChannelToDriver, matching kDriverPositionsDeg order.
             // Equivalent to Bela's audioWrite(context, n, kOutputChannelToDriver[channel], ...).
-            for (int channel = 0; channel < SphericalHarmonicsEngine::kNumDrivers; ++channel)
-                pOutput[n * kNumDrivers + channel] = _biquadHP[channel].process(driverMix[channel]);
+            for (int channel = 0; channel < SphericalHarmonicsEngine::kNumDrivers; ++channel) {
+                // pOutput[n * kNumDrivers + channel] = _biquadHP[channel].process(driverMix[channel]);
+                int driverIndex = kOutputChannelToDriver[channel];
+                pOutput[n * kNumDrivers + driverIndex -1] = _biquadHP[channel].process(driverMix[channel]);
+            }
         }
 
         pOutputProcessParameters[0].BufferFlags     = XAPO_BUFFER_VALID;
