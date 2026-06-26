@@ -6,11 +6,11 @@ Full build-to-test walkthrough for `LingQi000809/x3daudio1_7_spherephones`, a fo
 
 ## Part 1 — Prerequisites
 
-1. **Visual Studio 2022**, Desktop development with C++ workload.
+1. **Visual Studio 2026**, Desktop development with C++ workload.
 2. **DirectX SDK (June 2010)** — installs to `C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\` by default. Required because the project's `DirectX-SDK-June-2010.props` files reference it for legacy XAudio2.7/X3DAudio headers.
    - Known installer quirk on modern Windows: if setup fails with error code `S1023`, uninstall the **Visual C++ 2010 x64/x86 Redistributable** first, run the DirectX SDK installer, then reinstall the redistributable afterward. This is a well-documented conflict, not something specific to your machine.
-3. **VS2022 "MSVC v141/v110 build tools (x86,x64)" optional component** — only needed if the `.vcxproj` pins an old `PlatformToolset` you don't already have. Check this in Part 3.
-4. **Root Builder** plugin for Mod Organizer 2 (see Part 5).
+3. **VS "MSVC v143 build tools (x86,x64)" optional component**. Check this in Part 3.
+4. **Mod Organizer 2** and **Root Builder** plugin (see Part 5).
 5. **Skyrim Special Edition**, already set up and launching cleanly through MO2 before you start.
 
 ---
@@ -37,9 +37,16 @@ If logging is included, the output log can be found under `C:\Program Files (x86
 
 ---
 
-## Part 3 — Open and configure the solution
+## Part 3 — Configure the solution
 
-1. Open `x3daudio1_7.sln` in Visual Studio 2022.
+### Visual Studio Installer
+1. Go to Visual Studio Installer -> Modify -> Individual Components and install the following:
+   - `MSVC v143 - VS 2022 C++ x64/x86 build tools (v14.44-17.14)` (the latest one that is not out of support)
+   - `C++ v14.44(17.14) ATL for v143 build tools (x86 & x64)`
+
+
+### Build Solution Configuration
+1. Open `x3daudio1_7.sln` in Visual Studio.
 2. In Solution Explorer, right-click the `x3daudio1_7` project → **Properties** → General, and check the **Platform Toolset**.
    - If it's set to something like `v110` or `v120` and that's not installed, either:
      - Install it via Visual Studio Installer → Modify → Individual Components → search "MSVC ... build tools", **or**
@@ -55,7 +62,7 @@ If logging is included, the output log can be found under `C:\Program Files (x86
    ```
    x64\Release\x3daudio1_7.dll
    ```
-3. **Verify exports before testing in-game.** Open "Developer Command Prompt for VS 2022" and run:
+3. **Verify exports before testing in-game.** Open "Developer Command Prompt for VS" and run:
    ```
    dumpbin /exports x64\Release\x3daudio1_7.dll
    ```
@@ -65,9 +72,10 @@ If logging is included, the output log can be found under `C:\Program Files (x86
 
 ## Part 5 — Install and configure Root Builder in MO2
 
-MO2 can only manage the `Data\` folder by default. This DLL needs to sit next to `SkyrimSE.exe` in the game root, so you need Root Builder to manage it cleanly.
+If you don't have Mod Manager 2, download it at: https://www.modorganizer.org/. Create a new global instance and select the "Skyrim Special Edition" game to manage (of course this requires you to have this game installed from Steam). 
 
 1. Download **Root Builder** (Kezyma's actively maintained version) from Nexus Mods (Skyrim SE Nexus, mod ID 31720) or GitHub (`Kezyma/ModOrganizer-Plugins`).
+   - MO2 can only manage the `Data\` folder by default. This DLL needs to sit next to `SkyrimSE.exe` in the game root, so you need Root Builder to manage it cleanly.
 2. Extract the `rootbuilder` folder (containing `__init__.py` and a `shared`/`rootbuilder` subfolder structure) directly into your **MO2 installation directory's** `plugins\` folder — this is the folder where `ModOrganizer.exe` lives, *not* your MO2 instance/profile folder. Example: `C:\Modding\MO2\plugins\rootbuilder\`.
 3. Restart MO2 if it's open.
 4. Click the **Tools** icon (wrench/screwdriver) in MO2's toolbar → select **Root Builder** to open its settings.
