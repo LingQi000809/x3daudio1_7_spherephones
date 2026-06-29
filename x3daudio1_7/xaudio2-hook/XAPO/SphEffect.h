@@ -113,8 +113,21 @@ public:
     // 0.0 = fully mono bass (both subs identical), 1.0 = current full L/R split.
     static constexpr float kBassPanAmount = 0.f;
 
-    // The volume we receive from xaudio is too low. Multiple by this amount to amplify sounds.
-    static constexpr float volumeMultipler = 10;
+    // Per-source gain applied on top of the X3DAudio VolumeMultiplier before SH decoding.
+    // Keep at 1.0 — overall loudness is controlled by masterVolume at the mastering voice
+    // so that individual voices never saturate before they reach the mix.
+    static constexpr float amplification = 1.f;
+
+    // Gain applied to the mastering voice after all sources are mixed together.
+    // Equivalent to a hardware volume knob on the spherephone amplifier — raise this
+    // until the spherephone matches headphone listening levels. No per-source clipping
+    // can occur because the boost happens after summation.
+    static constexpr float masterVolume = 8.f;
+
+    // Exponent applied to the X3DAudio VolumeMultiplier before SH decoding (must be > 0).
+    // 1.0 = no change. Values below 1 compress dynamic range: quiet sounds (ambient, reverb)
+    // get boosted relative to loud sounds (dialog), closing the gap between them.
+    static constexpr float volumeCurveExponent = 0.5f;
     // --------------------------------------------------------------------
 
     explicit SphXapoEffect();
@@ -136,6 +149,12 @@ private:
     SphericalHarmonicsEngine _engine;
     Biquad _biquadHP[SphericalHarmonicsEngine::kNumDrivers]; // high-pass for small drivers
     Biquad _biquadLP[kNumBassDrivers];                       // low-pass for bass channels
+
+    // Last sample value actually written to pOutput per small driver, and the
+    // peak absolute value since the previous log tick. Both read by the logging
+    // throttle in computeGains; peak is reset to 0 after each log.
+    float _lastOutput[SphericalHarmonicsEngine::kNumDrivers] = {};
+    float _peakOutput[SphericalHarmonicsEngine::kNumDrivers] = {};
 
     WAVEFORMATEX _inputFormat;
     WAVEFORMATEX _outputFormat;

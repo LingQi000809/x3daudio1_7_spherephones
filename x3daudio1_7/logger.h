@@ -40,5 +40,5 @@ namespace logger
 		details::log(ss.str());
 	}
 
-	void logSpatialGains(float azDeg, float elDeg, float volume, const float* gains, int numGains);
+	void logSpatialGains(float azDeg, float elDeg, float effectiveMultiplier, const float* snap, const float* peak, int numGains);
 }

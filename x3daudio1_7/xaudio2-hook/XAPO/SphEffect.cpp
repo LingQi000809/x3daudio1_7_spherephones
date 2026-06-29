@@ -349,6 +349,20 @@ ChannelMatrix SphXapoEffect::buildNonSpatialMatrix(const ChannelMatrix& sourceMa
     return matrix;
 }
 
+// Passes signals below limiterKnee through unchanged; soft-curves anything
+// above it to ±1 using tanh only in that small headroom region.
+// Unlike a full tanh, most of the waveform stays linear so loudness and
+// clarity are preserved — only genuine peaks get rounded.
+static constexpr float limiterKnee = 0.9f;
+static inline float limitOutput(float x)
+{
+    float a = std::abs(x);
+    if (a <= limiterKnee) return x;
+    float over     = a - limiterKnee;
+    float headroom = 1.0f - limiterKnee;
+    return std::copysign(limiterKnee + headroom * std::tanh(over / headroom), x);
+}
+
 SphXapoEffect::SphXapoEffect()
     : CXAPOParametersBase(&_regProps, reinterpret_cast<BYTE*>(_params), sizeof(HrtfXapoParam), FALSE)
 {
@@ -397,15 +411,15 @@ void SphXapoEffect::computeGains(float azimuthRad, float elevationRad, float vol
                               elevationRad * (180.0f / 3.14159265358979323846f)};
     float Y_src[SphericalHarmonicsEngine::kAmbi] = {};
     getRSH(SphericalHarmonicsEngine::kOrder, src_dir_deg, 1, Y_src);
-    _engine.setObjectRSH(Y_src, volume * volumeMultipler);
+    float compressedVolume = std::pow(std::max(0.0f, volume), volumeCurveExponent);
+    _engine.setObjectRSH(Y_src, compressedVolume * amplification);
 
     static int throttle = 0;
     if (++throttle >= 100)
     {
         throttle = 0;
-        float gains[SphericalHarmonicsEngine::kNumDrivers];
-        _engine.getTargetGains(gains);
-        logger::logSpatialGains(src_dir_deg[0], src_dir_deg[1], volume * volumeMultipler, gains, SphericalHarmonicsEngine::kNumDrivers);
+        logger::logSpatialGains(src_dir_deg[0], src_dir_deg[1], compressedVolume * amplification, _lastOutput, _peakOutput, SphericalHarmonicsEngine::kNumDrivers);
+        std::fill(std::begin(_peakOutput), std::end(_peakOutput), 0.0f);
     }
 }
 
@@ -455,15 +469,18 @@ void SphXapoEffect::Process(
             // Equivalent to Bela's audioWrite(context, n, kBassLeftOut/kBassRightOut, ...).
             // pOutput[n * kNumDrivers + SphericalHarmonicsEngine::kNumDrivers]     = _biquadLP[0].process(bassLOut);
             // pOutput[n * kNumDrivers + SphericalHarmonicsEngine::kNumDrivers + 1] = _biquadLP[1].process(bassROut);
-            pOutput[n * kNumDrivers + kBassLeftOut -1]  = _biquadLP[0].process(bassLOut);
-            pOutput[n * kNumDrivers + kBassRightOut -1] = _biquadLP[1].process(bassROut);
+            pOutput[n * kNumDrivers + kBassLeftOut -1]  = limitOutput(_biquadLP[0].process(bassLOut));
+            pOutput[n * kNumDrivers + kBassRightOut -1] = limitOutput(_biquadLP[1].process(bassROut));
 
             // Small drivers occupy output channels listed in kOutputChannelToDriver, matching kDriverPositionsDeg order.
             // Equivalent to Bela's audioWrite(context, n, kOutputChannelToDriver[channel], ...).
             for (int channel = 0; channel < SphericalHarmonicsEngine::kNumDrivers; ++channel) {
                 // pOutput[n * kNumDrivers + channel] = _biquadHP[channel].process(driverMix[channel]);
                 int driverIndex = kOutputChannelToDriver[channel];
-                pOutput[n * kNumDrivers + driverIndex -1] = _biquadHP[channel].process(driverMix[channel]);
+                float s = limitOutput(_biquadHP[channel].process(driverMix[channel]));
+                pOutput[n * kNumDrivers + driverIndex - 1] = s;
+                _lastOutput[channel] = s;
+                if (std::abs(s) > _peakOutput[channel]) _peakOutput[channel] = std::abs(s);
             }
         }
 

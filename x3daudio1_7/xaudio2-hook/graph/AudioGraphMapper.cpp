@@ -146,6 +146,7 @@ IXAudio2MasteringVoice* AudioGraphMapper::CreateMasteringVoice(UINT32 InputChann
 	// N-channel mastering voice for the spherephone (kNumDrivers in SphEffect.h).
 	IXAudio2MasteringVoice * actualVoiceRawPtr;
 	_xaudio.CreateMasteringVoice(&actualVoiceRawPtr, SphXapoEffect::kNumDrivers, InputSampleRate, Flags, DeviceIndex, pEffectChain);
+	actualVoiceRawPtr->SetVolume(SphXapoEffect::masterVolume);
 	const std::shared_ptr<IXAudio2MasteringVoice> actualVoice(actualVoiceRawPtr, [](IXAudio2MasteringVoice * voice) { voice->DestroyVoice(); });
 
 	{
