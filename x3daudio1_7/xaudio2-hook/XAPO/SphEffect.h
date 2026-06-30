@@ -122,12 +122,12 @@ public:
     // Equivalent to a hardware volume knob on the spherephone amplifier — raise this
     // until the spherephone matches headphone listening levels. No per-source clipping
     // can occur because the boost happens after summation.
-    static constexpr float masterVolume = 8.f;
+    static constexpr float masterVolume = 6.f;
 
     // Exponent applied to the X3DAudio VolumeMultiplier before SH decoding (must be > 0).
     // 1.0 = no change. Values below 1 compress dynamic range: quiet sounds (ambient, reverb)
     // get boosted relative to loud sounds (dialog), closing the gap between them.
-    static constexpr float volumeCurveExponent = 0.5f;
+    static constexpr float volumeCurveExponent = 1.f;
     // --------------------------------------------------------------------
 
     explicit SphXapoEffect();
@@ -158,5 +158,5 @@ private:
 
     WAVEFORMATEX _inputFormat;
     WAVEFORMATEX _outputFormat;
-    HrtfXapoParam _params[3]; // ring bufffer as CXAPOParametersBase requires
+    HrtfXapoParam _params[3]; // ring buffer as CXAPOParametersBase requires
 };

@@ -276,6 +276,12 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 
 		const auto spatializedData = _spatializedDataExtractor.ExtractSpatialData(source, pDestinationProxy);
 
+		// Confirmed via testing: footsteps and outdoor NPC dialogue land here
+		// (the game computes a real 3D position for them via X3DAudio), and get
+		// routed through SphXapoEffect::Process() with the HRTF effect chain
+		// below. Indoor dialogue, music, and UI sounds don't get a 3D position
+		// from the game at all and fall through to the non-spatial branch
+		// further down instead — see the comment there for what that path does.
 		if (spatializedData.present)
 		{
 			if (node->mainOutputChannelsCount > 2)
@@ -326,32 +332,17 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 				tailVoiceDescriptor.isSpatialized = false;
 			}
 
+			// This branch isn't just music/UI sounds — logging clientMatrix here
+			// during a play session showed indoor NPC dialogue lands here too
+			// (clientMatrix.GetDestinationCount() == 6, i.e. a 5.1-shaped matrix),
+			// while outdoor dialogue goes through the spatializedData.present
+			// branch above instead. Looks like the game only computes a real 3D
+			// position for outdoor dialogue; indoors it's mixed the same
+			// non-positional way as music/UI, just via Center instead of L/R.
+			// See SphXapoEffect::buildNonSpatialMatrix for how that 5.1 matrix
+			// gets folded into our 10 physical channels.
 			auto clientMatrix = source->getOutputMatrix(pDestinationProxy);
-
-			ChannelMatrix matrix;
-
-			if (destinationNode->inputChannelsCount == clientMatrix.GetDestinationCount())
-			{
-				matrix = std::move(clientMatrix);
-			}
-			else if (destinationNode->inputChannelsCount == SphXapoEffect::kNumDrivers)
-			{
-				matrix = SphXapoEffect::buildNonSpatialMatrix(clientMatrix);
-			}
-			else if (destinationNode->inputChannelsCount == 2)
-			{
-				matrix = adaptChannelMatrixToStereoOutput(clientMatrix);
-			}
-			else
-			{
-				throw std::logic_error("Sender output channels count does not match sendee input channels count and sendee input channels count is not 2 or 10. That should not have happened.");
-			}
-
-			std::vector<float> values;
-			values.resize(matrix.GetSourceCount() * matrix.GetDestinationCount());
-			from_ChannelMatrix(matrix, matrix.GetSourceCount(), matrix.GetDestinationCount(), &*values.begin());
-
-			node->tailVoices.at(destinationNode).voice->SetOutputMatrix(destinationNode->mainVoice.get(), matrix.GetSourceCount(), matrix.GetDestinationCount(), &*values.begin());
+			applyNonSpatialOutputMatrix(destinationNode, node->tailVoices.at(destinationNode).voice.get(), clientMatrix);
 		}
 	};
 
@@ -401,6 +392,23 @@ void AudioGraphMapper::resetSendsForVoice(XAudio2VoiceProxy* proxyVoice)
 		Node* sendNode = getNodeForProxyVoice(proxySend.pOutputVoice);
 		auto tailVoice = createTailVoice(node, sendNode, effect_chain());
 
+		// Apply a spherephone-aware default matrix right away. Until/unless the
+		// client explicitly calls SetOutputMatrix (handled in onSetOutputMatrix
+		// below), this connection would otherwise sit on XAudio2's own built-in
+		// default mix matrix, which has no notion of the spherephone's 10-channel
+		// layout. Confirmed by logging this and onSetOutputMatrix side by side:
+		// most non-spatial connections (UI sounds, indoor dialogue) DO call
+		// SetOutputMatrix moments after connecting and immediately overwrite this
+		// default — but background music doesn't call it at all, so without this
+		// proactive default it would have been stuck on XAudio2's generic mix
+		// matrix for its entire lifetime.
+		const UINT32 srcChannels = node->mainOutputChannelsCount;
+		ChannelMatrix identityMatrix(srcChannels, srcChannels);
+		for (UINT32 c = 0; c < srcChannels; ++c)
+			identityMatrix.SetValue(c, c, 1.0f);
+
+		applyNonSpatialOutputMatrix(sendNode, tailVoice.get(), identityMatrix);
+
 		TailVoiceDescriptor tailVoiceDesc;
 		tailVoiceDesc.voice = std::move(tailVoice);
 		tailVoiceDesc.flags = proxySend.Flags;
@@ -411,6 +419,39 @@ void AudioGraphMapper::resetSendsForVoice(XAudio2VoiceProxy* proxyVoice)
 	}
 
 	updateSendsForMainVoice(node);
+}
+
+// Picks the right channel-mapping strategy for a non-spatial connection (identity
+// pass-through, spherephone non-spatial decode, or stereo downmix) based on the
+// destination's channel count, and applies it to tailVoice. Shared by the default
+// matrix applied at connection time and the reactive path triggered by the
+// client's own SetOutputMatrix calls.
+void AudioGraphMapper::applyNonSpatialOutputMatrix(Node* destinationNode, IXAudio2SubmixVoice* tailVoice, const ChannelMatrix& clientMatrix)
+{
+	ChannelMatrix matrix;
+
+	if (destinationNode->inputChannelsCount == clientMatrix.GetDestinationCount())
+	{
+		matrix = clientMatrix;
+	}
+	else if (destinationNode->inputChannelsCount == SphXapoEffect::kNumDrivers)
+	{
+		matrix = SphXapoEffect::buildNonSpatialMatrix(clientMatrix);
+	}
+	else if (destinationNode->inputChannelsCount == 2)
+	{
+		matrix = adaptChannelMatrixToStereoOutput(clientMatrix);
+	}
+	else
+	{
+		throw std::logic_error("Sender output channels count does not match sendee input channels count and sendee input channels count is not 2 or 10. That should not have happened.");
+	}
+
+	std::vector<float> values;
+	values.resize(matrix.GetSourceCount() * matrix.GetDestinationCount());
+	from_ChannelMatrix(matrix, matrix.GetSourceCount(), matrix.GetDestinationCount(), &*values.begin());
+
+	tailVoice->SetOutputMatrix(destinationNode->mainVoice.get(), matrix.GetSourceCount(), matrix.GetDestinationCount(), &*values.begin());
 }
 
 void AudioGraphMapper::updateSendsForMainVoice(Node* node)

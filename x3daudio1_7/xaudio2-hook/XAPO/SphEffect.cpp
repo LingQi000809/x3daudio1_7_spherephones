@@ -327,24 +327,48 @@ ChannelMatrix SphXapoEffect::buildNonSpatialMatrix(const ChannelMatrix& sourceMa
 
     for (UINT32 src = 0; src < srcCount; ++src)
     {
-        // dest ch 0 = FL channel weight, dest ch 1 = FR channel weight.
-        // A mono source typically has GetValue(0,0)=1 and GetValue(0,1)=1,
-        // which sums flGains+frGains and produces a centred front image.
-        const float wFL = (destCount >= 1) ? sourceMatrix.GetValue(src, 0) : 0.0f;
-        const float wFR = (destCount >= 2) ? sourceMatrix.GetValue(src, 1) : wFL;
+        // The client matrix isn't always plain stereo: this game creates its
+        // mastering voice for 6 channels (5.1), so per-source matrices here
+        // follow the standard XAudio2/WAVEFORMATEXTENSIBLE 5.1 order
+        // FL,FR,FC,LFE,BL,BR rather than just FL,FR. Reading only channels 0/1
+        // silently drops anything the client put in Center (where dialogue is
+        // conventionally mixed) or the rear channels. Fold Center and rear
+        // into L/R, and feed LFE straight into the bass drivers below — it's
+        // already non-directional, so it doesn't need the point-source decode.
+        auto chWeight = [&](UINT32 ch) { return (destCount > ch) ? sourceMatrix.GetValue(src, ch) : 0.0f; };
 
+        const float fl  = chWeight(0);
+        const float fr  = (destCount >= 2) ? chWeight(1) : fl;
+        const float fc  = chWeight(2);
+        const float lfe = chWeight(3);
+        const float bl  = chWeight(4);
+        const float br  = chWeight(5);
+
+        const float wFL = fl + 0.5f * fc + bl;
+        const float wFR = fr + 0.5f * fc + br;
+
+        // This matrix bypasses the XAPO and feeds the master voice directly
+        // (no Process() call), so unlike the engine's internal driverMix
+        // array, column indices here must already be physical output
+        // channels. Remap through kOutputChannelToDriver, the same table
+        // Process() uses, instead of writing engine driver index d as-is.
         for (int d = 0; d < SphericalHarmonicsEngine::kNumDrivers; ++d)
-            matrix.SetValue(src, d, wFL * flGains[d] + wFR * frGains[d]);
+            matrix.SetValue(src, kOutputChannelToDriver[d] - 1, wFL * flGains[d] + wFR * frGains[d]);
 
-        // Bass channels: sum of left and right small driver groups.
-        // Drivers 0-3 = left side, drivers 4-7 = right side.
+        // Bass channels: sum of left and right small driver groups, derived from
+        // each driver's actual azimuth sign (+az = left, per kDriverPositionsDeg's
+        // convention) rather than assuming the first half of the array is left —
+        // that assumption would silently break if the driver table is ever reordered.
         float bassL = 0.0f, bassR = 0.0f;
-        for (int d = 0; d < SphericalHarmonicsEngine::kNumDrivers / 2; ++d) {
-            bassL += wFL * flGains[d]                                          + wFR * frGains[d];
-            bassR += wFL * flGains[d + SphericalHarmonicsEngine::kNumDrivers/2] + wFR * frGains[d + SphericalHarmonicsEngine::kNumDrivers/2];
+        for (int d = 0; d < SphericalHarmonicsEngine::kNumDrivers; ++d) {
+            const float contribution = wFL * flGains[d] + wFR * frGains[d];
+            if (kDriverPositionsDeg[d][0] > 0.0f)
+                bassL += contribution;
+            else
+                bassR += contribution;
         }
-        matrix.SetValue(src, SphericalHarmonicsEngine::kNumDrivers,     bassL);
-        matrix.SetValue(src, SphericalHarmonicsEngine::kNumDrivers + 1, bassR);
+        matrix.SetValue(src, kBassLeftOut - 1,  bassL + lfe);
+        matrix.SetValue(src, kBassRightOut - 1, bassR + lfe);
     }
     return matrix;
 }

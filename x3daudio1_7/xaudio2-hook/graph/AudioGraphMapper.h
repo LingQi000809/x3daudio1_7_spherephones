@@ -99,4 +99,5 @@ private:
 	void resetSendsForVoice(XAudio2VoiceProxy* proxyVoice);
 	void updateSendsForMainVoice(Node * node);
 	std::shared_ptr<IXAudio2SubmixVoice> createTailVoice(Node * senderNode, Node * sendNode, const effect_chain & effectChain);
+	void applyNonSpatialOutputMatrix(Node * destinationNode, IXAudio2SubmixVoice * tailVoice, const ChannelMatrix & clientMatrix);
 };
