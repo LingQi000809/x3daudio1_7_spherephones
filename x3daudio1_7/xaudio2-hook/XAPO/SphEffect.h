@@ -113,21 +113,49 @@ public:
     // 0.0 = fully mono bass (both subs identical), 1.0 = current full L/R split.
     static constexpr float kBassPanAmount = 0.f;
 
-    // Per-source gain applied on top of the X3DAudio VolumeMultiplier before SH decoding.
-    // Keep at 1.0 — overall loudness is controlled by masterVolume at the mastering voice
-    // so that individual voices never saturate before they reach the mix.
-    static constexpr float amplification = 1.f;
-
     // Gain applied to the mastering voice after all sources are mixed together.
     // Equivalent to a hardware volume knob on the spherephone amplifier — raise this
     // until the spherephone matches headphone listening levels. No per-source clipping
     // can occur because the boost happens after summation.
-    static constexpr float masterVolume = 6.f;
+    static constexpr float masterVolume = 2.5f;
 
     // Exponent applied to the X3DAudio VolumeMultiplier before SH decoding (must be > 0).
     // 1.0 = no change. Values below 1 compress dynamic range: quiet sounds (ambient, reverb)
     // get boosted relative to loud sounds (dialog), closing the gap between them.
     static constexpr float volumeCurveExponent = 1.f;
+
+    // Testing toggles: mute one of the two independent audio streams so you can
+    // listen to the other in isolation. EnableSpatialSound silences positioned
+    // 3D sound (footsteps, outdoor dialogue — the SphXapoEffect::Process()/HRTF
+    // path). EnableNonSpatialSound silences music/UI/indoor dialogue (the
+    // buildNonSpatialMatrix path). Both true = normal behavior.
+    static constexpr bool EnableSpatialSound    = true;
+    static constexpr bool EnableNonSpatialSound = true;
+
+    // Gain applied in AudioGraphMapper::applyNonSpatialOutputMatrix's passthrough
+    // branch (destinationNode->inputChannelsCount == clientMatrix.GetDestinationCount()),
+    // which in practice is only ever hit by the game's reverb send bus (a plain
+    // 2-channel destination, separate from the 10-channel spherephone master).
+    // The game computes that bus's wetness/distance falloff itself and gives us
+    // no say in it, so this is a blunt overall-level knob to keep reverb from
+    // drowning out the correctly distance-attenuated spatial dry signal.
+    // 1.0 = unchanged (whatever the game sent).
+    static constexpr float ReverbSendGain = 0.1f;
+
+    // Overall gain applied to ALL non-spatial output (music, UI, AND the reverb
+    // send above — this stacks multiplicatively with ReverbSendGain for that one), 
+    // applied once in AudioGraphMapper::applyNonSpatialOutputMatrix regardless of which of its
+    // three branches produced the matrix. Use this to balance the whole
+    // non-spatial stream down relative to spatial sound; use ReverbSendGain to
+    // fine-tune reverb specifically on top of that. 1.0 = unchanged.
+    static constexpr float NonSpatialGain = 0.7f;
+
+    // Overall gain applied to spatial (positioned 3D) sound — footsteps, outdoor
+    // dialogue, ambience — on top of the per-source X3DAudio VolumeMultiplier,
+    // applied in computeGains() before the spherical-harmonics decode. Same role
+    // as NonSpatialGain but for the other stream: use this to balance spatial
+    // sound relative to non-spatial. 1.0 = unchanged.
+    static constexpr float SpatialGain = 2.2f;
     // --------------------------------------------------------------------
 
     explicit SphXapoEffect();

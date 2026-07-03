@@ -340,12 +340,17 @@ ChannelMatrix SphXapoEffect::buildNonSpatialMatrix(const ChannelMatrix& sourceMa
         const float fl  = chWeight(0);
         const float fr  = (destCount >= 2) ? chWeight(1) : fl;
         const float fc  = chWeight(2);
-        const float lfe = chWeight(3);
+        const float lfeRaw = chWeight(3);
         const float bl  = chWeight(4);
         const float br  = chWeight(5);
 
-        const float wFL = fl + 0.5f * fc + bl;
-        const float wFR = fr + 0.5f * fc + br;
+        // EnableNonSpatialSound test toggle: force this whole stream silent
+        // (small drivers AND bass, including LFE below) so spatial sound can be
+        // auditioned alone. See EnableSpatialSound in computeGains() for the
+        // other half of this A/B test.
+        const float wFL = EnableNonSpatialSound ? (fl + 0.5f * fc + bl) : 0.0f;
+        const float wFR = EnableNonSpatialSound ? (fr + 0.5f * fc + br) : 0.0f;
+        const float lfe = EnableNonSpatialSound ? lfeRaw : 0.0f;
 
         // This matrix bypasses the XAPO and feeds the master voice directly
         // (no Process() call), so unlike the engine's internal driverMix
@@ -435,14 +440,14 @@ void SphXapoEffect::computeGains(float azimuthRad, float elevationRad, float vol
                               elevationRad * (180.0f / 3.14159265358979323846f)};
     float Y_src[SphericalHarmonicsEngine::kAmbi] = {};
     getRSH(SphericalHarmonicsEngine::kOrder, src_dir_deg, 1, Y_src);
-    float compressedVolume = std::pow(std::max(0.0f, volume), volumeCurveExponent);
-    _engine.setObjectRSH(Y_src, compressedVolume * amplification);
+    float compressedVolume = std::pow(std::max(0.0f, volume), volumeCurveExponent) * SpatialGain;
+    _engine.setObjectRSH(Y_src, EnableSpatialSound ? compressedVolume : 0.0f);
 
     static int throttle = 0;
     if (++throttle >= 100)
     {
         throttle = 0;
-        logger::logSpatialGains(src_dir_deg[0], src_dir_deg[1], compressedVolume * amplification, _lastOutput, _peakOutput, SphericalHarmonicsEngine::kNumDrivers);
+        logger::logSpatialGains(src_dir_deg[0], src_dir_deg[1], compressedVolume, _lastOutput, _peakOutput, SphericalHarmonicsEngine::kNumDrivers);
         std::fill(std::begin(_peakOutput), std::end(_peakOutput), 0.0f);
     }
 }

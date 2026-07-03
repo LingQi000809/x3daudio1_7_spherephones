@@ -7,6 +7,13 @@
 #include "graph/ISpatializedDataExtractor.h"
 #include "logger.h"
 
+// Divides the distance fed into the emitter's volume curve (not the reported
+// spatialData.distance, and not azimuth/elevation) so sounds come out louder
+// by making the game's own attenuation curve think the emitter is closer,
+// instead of multiplying VolumeMultiplier afterward where headroom can run out
+// and clip. 1.0 = no change; > 1.0 makes everything sound closer/louder.
+constexpr float volumeDistanceDivider = 1.5f;
+
 inline math::vector3 to_vector3(const X3DAUDIO_VECTOR & vector)
 {
 	return math::vector3{ vector.x, vector.y, vector.z };
@@ -132,11 +139,28 @@ inline SpatialData CommonX3DAudioCalculate(float speedOfSound, const X3DAUDIO_LI
 	const auto relative_position = world_to_listener_matrix * listener_to_emitter;
 	const auto distance = math::length(listener_to_emitter);
 
+	const float dividedDistance = distance / volumeDistanceDivider;
+
 	spatialData.present = true;
-	spatialData.volume_multiplier = sample_curve(pEmitter->pVolumeCurve, pEmitter->CurveDistanceScaler, distance);
+	spatialData.volume_multiplier = sample_curve(pEmitter->pVolumeCurve, pEmitter->CurveDistanceScaler, dividedDistance);
 	spatialData.azimuth = distance > std::numeric_limits<float>::epsilon() ? std::atan2(relative_position[0], relative_position[2]) : 0.0f;
 	spatialData.elevation = distance > std::numeric_limits<float>::epsilon() ? std::asin(math::normalize(relative_position)[1]) : 0.0f;
 	spatialData.distance = distance;
+
+	// Throttled instrumentation for tuning volumeDistanceDivider by ear against
+	// real values. rawVolumeMultiplier is what volume_multiplier would be
+	// WITHOUT the divider (recomputed here only for comparison, not used for
+	// audio) — if it's already 1.0 too, the divider had nothing to do because
+	// this emitter's curve was already fully saturated at the true distance.
+	static int distanceLogThrottle = 0;
+	if (++distanceLogThrottle >= 100)
+	{
+		distanceLogThrottle = 0;
+		const float rawVolumeMultiplier = sample_curve(pEmitter->pVolumeCurve, pEmitter->CurveDistanceScaler, distance);
+		logger::logRelease(L"[x3daudio-distance] distance=", distance, L" dividedDistance=", dividedDistance,
+			L" pEmitter->CurveDistanceScaler=", pEmitter->CurveDistanceScaler, L" pEmitter->pVolumeCurve=", pEmitter->pVolumeCurve,
+			L" rawVolumeMultiplier=", rawVolumeMultiplier, L" spatialData.volume_multiplier=", spatialData.volume_multiplier);
+	}
 
 	return spatialData;
 }

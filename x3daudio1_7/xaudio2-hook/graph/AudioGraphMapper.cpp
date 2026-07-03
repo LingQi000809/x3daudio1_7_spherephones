@@ -284,6 +284,21 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 		// further down instead — see the comment there for what that path does.
 		if (spatializedData.present)
 		{
+			// Throttled instrumentation: confirms by log which path a given sound
+			// takes and whether that stream's toggle is currently on. Throttled
+			// since spatial sounds can re-call SetOutputMatrix every frame while moving.
+			static int spatialLogThrottle = 0;
+			if (++spatialLogThrottle >= 60)
+			{
+				spatialLogThrottle = 0;
+				logger::logRelease(L"[audio-path] SPATIAL node=", node, L" destinationNode=", destinationNode,
+					L" node->mainOutputChannelsCount=", node->mainOutputChannelsCount,
+					L" destinationNode->inputChannelsCount=", destinationNode->inputChannelsCount,
+					L" EnableSpatialSound=", SphXapoEffect::EnableSpatialSound,
+					L" spatializedData.azimuth=", spatializedData.azimuth,
+					L" spatializedData.volume_multiplier=", spatializedData.volume_multiplier);
+			}
+
 			if (node->mainOutputChannelsCount > 2)
 				logger::logRelease(L"WARNING: onSetOutputMatrix ", source, " Trying to spatialize voice with more than two channels");
 
@@ -342,6 +357,20 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 			// See SphXapoEffect::buildNonSpatialMatrix for how that 5.1 matrix
 			// gets folded into our 10 physical channels.
 			auto clientMatrix = source->getOutputMatrix(pDestinationProxy);
+
+			// Throttled instrumentation, pairs with the SPATIAL log above.
+			static int nonSpatialLogThrottle = 0;
+			if (++nonSpatialLogThrottle >= 60)
+			{
+				nonSpatialLogThrottle = 0;
+				logger::logRelease(L"[audio-path] NON-SPATIAL node=", node, L" destinationNode=", destinationNode,
+					L" node->mainOutputChannelsCount=", node->mainOutputChannelsCount,
+					L" destinationNode->inputChannelsCount=", destinationNode->inputChannelsCount,
+					L" clientMatrix.GetSourceCount()=", clientMatrix.GetSourceCount(),
+					L" clientMatrix.GetDestinationCount()=", clientMatrix.GetDestinationCount(),
+					L" EnableNonSpatialSound=", SphXapoEffect::EnableNonSpatialSound);
+			}
+
 			applyNonSpatialOutputMatrix(destinationNode, node->tailVoices.at(destinationNode).voice.get(), clientMatrix);
 		}
 	};
@@ -433,6 +462,13 @@ void AudioGraphMapper::applyNonSpatialOutputMatrix(Node* destinationNode, IXAudi
 	if (destinationNode->inputChannelsCount == clientMatrix.GetDestinationCount())
 	{
 		matrix = clientMatrix;
+
+		// In practice this is only ever the game's reverb send bus (see
+		// SphXapoEffect::ReverbSendGain) — scale it so it can't drown out the
+		// separately, correctly distance-attenuated spatial dry signal.
+		for (UINT32 s = 0; s < matrix.GetSourceCount(); ++s)
+			for (UINT32 d = 0; d < matrix.GetDestinationCount(); ++d)
+				matrix.SetValue(s, d, matrix.GetValue(s, d) * SphXapoEffect::ReverbSendGain);
 	}
 	else if (destinationNode->inputChannelsCount == SphXapoEffect::kNumDrivers)
 	{
@@ -446,6 +482,14 @@ void AudioGraphMapper::applyNonSpatialOutputMatrix(Node* destinationNode, IXAudi
 	{
 		throw std::logic_error("Sender output channels count does not match sendee input channels count and sendee input channels count is not 2 or 10. That should not have happened.");
 	}
+
+	// Overall non-spatial gain, applied regardless of which branch above built
+	// the matrix (music/UI/indoor-dialogue via buildNonSpatialMatrix, the
+	// reverb passthrough — stacking with ReverbSendGain there — or the stereo
+	// downmix). See SphXapoEffect::NonSpatialGain.
+	for (UINT32 s = 0; s < matrix.GetSourceCount(); ++s)
+		for (UINT32 d = 0; d < matrix.GetDestinationCount(); ++d)
+			matrix.SetValue(s, d, matrix.GetValue(s, d) * SphXapoEffect::NonSpatialGain);
 
 	std::vector<float> values;
 	values.resize(matrix.GetSourceCount() * matrix.GetDestinationCount());
