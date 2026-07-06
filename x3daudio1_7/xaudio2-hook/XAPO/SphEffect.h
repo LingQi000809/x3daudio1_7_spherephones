@@ -117,7 +117,7 @@ public:
     // Equivalent to a hardware volume knob on the spherephone amplifier — raise this
     // until the spherephone matches headphone listening levels. No per-source clipping
     // can occur because the boost happens after summation.
-    static constexpr float masterVolume = 2.5f;
+    static constexpr float masterVolume = 2.7f;
 
     // Exponent applied to the X3DAudio VolumeMultiplier before SH decoding (must be > 0).
     // 1.0 = no change. Values below 1 compress dynamic range: quiet sounds (ambient, reverb)
@@ -148,7 +148,7 @@ public:
     // three branches produced the matrix. Use this to balance the whole
     // non-spatial stream down relative to spatial sound; use ReverbSendGain to
     // fine-tune reverb specifically on top of that. 1.0 = unchanged.
-    static constexpr float NonSpatialGain = 0.7f;
+    static constexpr float NonSpatialGain = 0.8f;
 
     // Overall gain applied to spatial (positioned 3D) sound — footsteps, outdoor
     // dialogue, ambience — on top of the per-source X3DAudio VolumeMultiplier,
@@ -156,6 +156,23 @@ public:
     // as NonSpatialGain but for the other stream: use this to balance spatial
     // sound relative to non-spatial. 1.0 = unchanged.
     static constexpr float SpatialGain = 2.2f;
+
+    // Per-channel calibration gain correcting for the right ear reading slightly
+    // louder than the left. Multiplies every physical channel feeding the
+    // right-ear driver group (bass + 4 small drivers), on both the spatial
+    // (Process()) and non-spatial (buildNonSpatialMatrix()) paths. 1.0 = unchanged.
+    static constexpr float RightEarGain = 0.8f;
+
+    // True if the given 1-indexed physical output channel feeds a right-ear
+    // driver (kBassRightOut or one of the 4 right small-driver channels in
+    // kOutputChannelToDriver, i.e. driver indices 4-7 per kDriverPositionsDeg).
+    static constexpr bool IsRightChannel(int channel1Indexed)
+    {
+        if (channel1Indexed == kBassRightOut) return true;
+        for (int d = 4; d < SphericalHarmonicsEngine::kNumDrivers; ++d)
+            if (kOutputChannelToDriver[d] == channel1Indexed) return true;
+        return false;
+    }
     // --------------------------------------------------------------------
 
     explicit SphXapoEffect();

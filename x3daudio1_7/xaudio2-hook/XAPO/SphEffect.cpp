@@ -357,8 +357,12 @@ ChannelMatrix SphXapoEffect::buildNonSpatialMatrix(const ChannelMatrix& sourceMa
         // array, column indices here must already be physical output
         // channels. Remap through kOutputChannelToDriver, the same table
         // Process() uses, instead of writing engine driver index d as-is.
-        for (int d = 0; d < SphericalHarmonicsEngine::kNumDrivers; ++d)
-            matrix.SetValue(src, kOutputChannelToDriver[d] - 1, wFL * flGains[d] + wFR * frGains[d]);
+        for (int d = 0; d < SphericalHarmonicsEngine::kNumDrivers; ++d) {
+            const int channel1Indexed = kOutputChannelToDriver[d];
+            float value = wFL * flGains[d] + wFR * frGains[d];
+            if (IsRightChannel(channel1Indexed)) value *= RightEarGain;
+            matrix.SetValue(src, channel1Indexed - 1, value);
+        }
 
         // Bass channels: sum of left and right small driver groups, derived from
         // each driver's actual azimuth sign (+az = left, per kDriverPositionsDeg's
@@ -373,7 +377,7 @@ ChannelMatrix SphXapoEffect::buildNonSpatialMatrix(const ChannelMatrix& sourceMa
                 bassR += contribution;
         }
         matrix.SetValue(src, kBassLeftOut - 1,  bassL + lfe);
-        matrix.SetValue(src, kBassRightOut - 1, bassR + lfe);
+        matrix.SetValue(src, kBassRightOut - 1, (bassR + lfe) * RightEarGain);
     }
     return matrix;
 }
@@ -499,7 +503,7 @@ void SphXapoEffect::Process(
             // pOutput[n * kNumDrivers + SphericalHarmonicsEngine::kNumDrivers]     = _biquadLP[0].process(bassLOut);
             // pOutput[n * kNumDrivers + SphericalHarmonicsEngine::kNumDrivers + 1] = _biquadLP[1].process(bassROut);
             pOutput[n * kNumDrivers + kBassLeftOut -1]  = limitOutput(_biquadLP[0].process(bassLOut));
-            pOutput[n * kNumDrivers + kBassRightOut -1] = limitOutput(_biquadLP[1].process(bassROut));
+            pOutput[n * kNumDrivers + kBassRightOut -1] = limitOutput(_biquadLP[1].process(bassROut)) * RightEarGain;
 
             // Small drivers occupy output channels listed in kOutputChannelToDriver, matching kDriverPositionsDeg order.
             // Equivalent to Bela's audioWrite(context, n, kOutputChannelToDriver[channel], ...).
@@ -507,6 +511,7 @@ void SphXapoEffect::Process(
                 // pOutput[n * kNumDrivers + channel] = _biquadHP[channel].process(driverMix[channel]);
                 int driverIndex = kOutputChannelToDriver[channel];
                 float s = limitOutput(_biquadHP[channel].process(driverMix[channel]));
+                if (IsRightChannel(driverIndex)) s *= RightEarGain;
                 pOutput[n * kNumDrivers + driverIndex - 1] = s;
                 _lastOutput[channel] = s;
                 if (std::abs(s) > _peakOutput[channel]) _peakOutput[channel] = std::abs(s);
