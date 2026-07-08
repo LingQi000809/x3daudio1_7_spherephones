@@ -70,17 +70,44 @@ If logging is included, the output log can be found under `C:\Program Files (x86
 
 ---
 
-## Part 5 — Install and configure Root Builder in MO2
-
+## Part 5 — Install tools and mods
 If you don't have Mod Manager 2, download it at: https://www.modorganizer.org/. Create a new global instance and select the "Skyrim Special Edition" game to manage (of course this requires you to have this game installed from Steam). 
+
+### Skyrim Script Extender (SKSE64)
+* Check game version
+   * Steam -> right click Skyrim SE -> Manage -> Browse local files
+   * Right click `SkyrimSE.exe` -> Properties -> Details -> Note Product version number
+* Download matching SKSE   
+   * Go to the [SKSE website](https://skse.silverlock.org) and download the .7z archive that matches your game version
+* Move core executables
+   * Unzip the folder, and copy everything to the Skyrim SE folder (where `SkyrimSE.exe` exists). Let the Data folder merge with the existing Data folder.
+* Link to MO2
+   * Open MO2; it should automatically detect `skse64_loader.exe`
+   * If it does not, open Tools -> Executables -> SKSE -> Link to the location of the exe file.
+   * Important: Make sure SKSE is on the top of all executables.
+
+### Address Library 
+This mod allows C++ SKSE plugins to work across almost all game versions.
+* [Address Library](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
+   * Download: Files -> Select the `All in one (all game versions)` version
+* In MO2, right click in the region that lists all mods -> Create empty mod -> Custom name
+* Right click on the newly created mod -> Open in explorer
+* Unzip the downloaded mod file and move the folder named "SKSE" into the explorer folder from MO2.
+
+### Crash Logger
+* [CrashLogger](https://www.nexusmods.com/skyrimspecialedition/mods/59818): prints out debugging logs if the game crashes.
+* Same steps as the previous mod to add it to MO2
+
+### Root Builder
 
 1. Download **Root Builder** (Kezyma's actively maintained version) from Nexus Mods (Skyrim SE Nexus, mod ID 31720) or GitHub (`Kezyma/ModOrganizer-Plugins`).
    - MO2 can only manage the `Data\` folder by default. This DLL needs to sit next to `SkyrimSE.exe` in the game root, so you need Root Builder to manage it cleanly.
 2. Extract the `rootbuilder` folder (containing `__init__.py` and a `shared`/`rootbuilder` subfolder structure) directly into your **MO2 installation directory's** `plugins\` folder — this is the folder where `ModOrganizer.exe` lives, *not* your MO2 instance/profile folder. Example: `C:\Modding\MO2\plugins\rootbuilder\`.
 3. Restart MO2 if it's open.
-4. Click the **Tools** icon (wrench/screwdriver) in MO2's toolbar → select **Root Builder** to open its settings.
+4. Open **Tools** in MO2's navigation bar → Tool Plugins -> **Root Builder** -> open its **Settings** tab.
 5. Ensure **Installer** is ticked — this is required for the "Root" folder convention (step 6 below) to work when installing mods.
 6. Close the settings dialog. Root Builder is now active.
+7. You may need to double click on the mod and then close the pop-up mod window for the error mark to disappear.
 
 ---
 
@@ -100,10 +127,17 @@ If you don't have Mod Manager 2, download it at: https://www.modorganizer.org/. 
 5. Back in MO2's mod list, make sure the mod's checkbox is **enabled**. It's normal for MO2 to show no entries under "Data" content for this mod — that's expected, since it only contains a Root file.
 6. Root Builder will deploy `x3daudio1_7.dll` directly into your Skyrim SE install folder (next to `SkyrimSE.exe`) automatically when you launch through MO2, and will restore the original game-folder state afterward.
 
+## Part 7 — Output setting
+1. As of today, we use `Focusrite Scarlett i8i20` as the audio interface to connect the Spherephones to the laptop / desktop.
+2. Download `Focusrite Control`.
+3. Adjust sound setting for the 7.1 surround sound setting. 
+   - System -> Sound -> More sound settings 
+   - Select Focusrite USB Audio -> Configure -> 7.1 Surround -> Next -> Keep everything as default (everything is checked)
+   - Test to make sure you can hear sounds from all positions.
 
-## Part 7 — Launch and verify in-game
+## Part 8 — Launch and verify in-game
 
 1. In MO2, select your Skyrim SE launch executable (SKSE loader, typically) from the executables dropdown.
 2. Launch through MO2 (not directly via Steam — that bypasses MO2's VFS and Root Builder's deployment).
 3. Confirm Root Builder actually deployed the file: while Skyrim is running, check the real Skyrim SE install folder in Explorer — `x3daudio1_7.dll` should be sitting there next to `SkyrimSE.exe`.
-4. Load into a save or start a new game, and get to an area with varied ambient/directional sound (a city street, a dungeon with dripping water, combat with multiple enemies — anything with several simultaneous sound sources).
+5. Load into a save or start a new game, and get to an area with varied ambient/directional sound (a city street, a dungeon with dripping water, combat with multiple enemies — anything with several simultaneous sound sources).
