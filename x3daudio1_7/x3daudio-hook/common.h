@@ -12,6 +12,18 @@
 // which is where headroom runs out and clips. 1.0 = no change.
 constexpr float volumeDistanceDivider = 1.5f;
 
+// Compresses distance beyond a knee (a fraction of CurveDistanceScaler, so it scales per-sound)
+// so far sounds stay audible without exceeding what a knee-distance sound already produces —
+// warps distance rather than gain, same trick as volumeDistanceDivider, to avoid clipping.
+constexpr float farKneeFraction = 0.5f;      // fraction of CurveDistanceScaler where compression begins
+constexpr float farCompressionRatio = 0.4f;  // 1.0 = no compression, lower = more aggressive beyond the knee
+
+inline float compressFarDistance(float distance, float distanceScaler)
+{
+	const float knee = farKneeFraction * distanceScaler;
+	return distance <= knee ? distance : knee + (distance - knee) * farCompressionRatio;
+}
+
 inline math::vector3 to_vector3(const X3DAUDIO_VECTOR & vector)
 {
 	return math::vector3{ vector.x, vector.y, vector.z };
@@ -137,7 +149,8 @@ inline SpatialData CommonX3DAudioCalculate(float speedOfSound, const X3DAUDIO_LI
 	const auto relative_position = world_to_listener_matrix * listener_to_emitter;
 	const auto distance = math::length(listener_to_emitter);
 
-	const float dividedDistance = distance / volumeDistanceDivider;
+	const float compressedDistance = compressFarDistance(distance, pEmitter->CurveDistanceScaler);
+	const float dividedDistance = compressedDistance / volumeDistanceDivider;
 
 	spatialData.present = true;
 	spatialData.volume_multiplier = sample_curve(pEmitter->pVolumeCurve, pEmitter->CurveDistanceScaler, dividedDistance);
@@ -160,7 +173,7 @@ inline SpatialData CommonX3DAudioCalculate(float speedOfSound, const X3DAUDIO_LI
 		distanceLogThrottle = 0;
 		const float rawVolumeMultiplier = sample_curve(pEmitter->pVolumeCurve, pEmitter->CurveDistanceScaler, distance);
 		logger::logRelease(L"[x3daudio-distance] pos=(", pEmitter->Position.x, L",", pEmitter->Position.y, L",", pEmitter->Position.z, L")",
-			L" distance=", distance, L" dividedDistance=", dividedDistance,
+			L" distance=", distance, L" compressedDistance=", compressedDistance, L" dividedDistance=", dividedDistance,
 			L" azimuthDeg=", spatialData.azimuth * (180.0f / 3.14159265358979323846f),
 			L" elevationDeg=", spatialData.elevation * (180.0f / 3.14159265358979323846f),
 			L" pEmitter->CurveDistanceScaler=", pEmitter->CurveDistanceScaler, L" pEmitter->pVolumeCurve=", pEmitter->pVolumeCurve,
