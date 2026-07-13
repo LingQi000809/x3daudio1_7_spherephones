@@ -55,10 +55,8 @@ private:
     float y1 = 0.0f, y2 = 0.0f;
 };
 
-// Single-object adaptation of Bela's SphericalHarmonicsEngine.
-// Differences from Bela: no numSoundObjects/vector indexing (one object per XAPO instance);
-// objectConfigs and coordinates removed (see note above); 
-// radiusGain passed into setObjectRSH by the caller.
+// Single-object adaptation of Bela's SphericalHarmonicsEngine: no numSoundObjects/vector
+// indexing (one object per XAPO instance), and radiusGain is passed in by the caller instead.
 class SphericalHarmonicsEngine
 {
 public:
@@ -85,18 +83,14 @@ private:
     std::array<LinearSmoothedValue, kNumDrivers> smoothedG; // smoothed gain values
 };
 
-// XAudio2's XAPO system is built on COM, and every COM object needs a unique identifier so the runtime can find, create, and version it.
-// CXAPOParametersBase is Microsoft's base class that handles the plumbing of getting parameters safely from the game thread to the audio thread. 
-// It internally triple-buffers HrtfXapoParam so the game can write a new position while the audio thread is reading the old one without a lock. 
-// SphXapoEffect inherits from it and adds the spherephone-specific audio math on top.
+// CXAPOParametersBase triple-buffers HrtfXapoParam so the game thread can write a new
+// position while the audio thread reads the old one, lock-free.
 class __declspec(uuid("{2A4E6F8B-1C3D-5A7E-9B2C-4D6F8A0C2E4B}")) SphXapoEffect : public CXAPOParametersBase
 {
 public:
     // --- Configuration --------------------------------------------------
-    // kNumBassDrivers: sub-bass drivers fed from the crossover LPF.
-    // kNumDrivers:     total physical output channels = SphericalHarmonicsEngine::kNumDrivers + kNumBassDrivers.
-    // To change hardware, update SphericalHarmonicsEngine::kNumDrivers and the
-    // positions table in SphEffect.cpp — the static_assert there will catch count mismatches.
+    // To change hardware, update SphericalHarmonicsEngine::kNumDrivers and the positions
+    // table in SphEffect.cpp — the static_assert there will catch count mismatches.
     static constexpr int kNumBassDrivers = 2;
     static constexpr int kNumDrivers     = SphericalHarmonicsEngine::kNumDrivers + kNumBassDrivers; // 10
 
@@ -113,10 +107,8 @@ public:
     // 0.0 = fully mono bass (both subs identical), 1.0 = current full L/R split.
     static constexpr float kBassPanAmount = 0.f;
 
-    // Gain applied to the mastering voice after all sources are mixed together.
-    // Equivalent to a hardware volume knob on the spherephone amplifier — raise this
-    // until the spherephone matches headphone listening levels. No per-source clipping
-    // can occur because the boost happens after summation.
+    // Post-summation master gain — like a volume knob on the amp. Raise until the
+    // spherephone matches headphone listening levels; can't cause per-source clipping.
     static constexpr float masterVolume = 2.7f;
 
     // Exponent applied to the X3DAudio VolumeMultiplier before SH decoding (must be > 0).
@@ -124,43 +116,26 @@ public:
     // get boosted relative to loud sounds (dialog), closing the gap between them.
     static constexpr float volumeCurveExponent = 1.f;
 
-    // Testing toggles: mute one of the two independent audio streams so you can
-    // listen to the other in isolation. EnableSpatialSound silences positioned
-    // 3D sound (footsteps, outdoor dialogue — the SphXapoEffect::Process()/HRTF
-    // path). EnableNonSpatialSound silences music/UI/indoor dialogue (the
-    // buildNonSpatialMatrix path). Both true = normal behavior.
+    // A/B toggles to isolate one stream: EnableSpatialSound = positioned 3D sound
+    // (Process()/HRTF path); EnableNonSpatialSound = music/UI/indoor dialogue (buildNonSpatialMatrix).
     static constexpr bool EnableSpatialSound    = true;
     static constexpr bool EnableNonSpatialSound = true;
 
-    // Gain applied in AudioGraphMapper::applyNonSpatialOutputMatrix's passthrough
-    // branch (destinationNode->inputChannelsCount == clientMatrix.GetDestinationCount()),
-    // which in practice is only ever hit by the game's reverb send bus (a plain
-    // 2-channel destination, separate from the 10-channel spherephone master).
-    // The game computes that bus's wetness/distance falloff itself and gives us
-    // no say in it, so this is a blunt overall-level knob to keep reverb from
-    // drowning out the correctly distance-attenuated spatial dry signal.
-    // 1.0 = unchanged (whatever the game sent).
+    // Hits only the game's reverb send bus (2-channel, separate from the 10-channel master) in
+    // applyNonSpatialOutputMatrix's passthrough branch. The game sets its own wetness/falloff for
+    // this bus, so this is a blunt knob to stop it drowning out the distance-attenuated dry signal.
     static constexpr float ReverbSendGain = 0.1f;
 
-    // Overall gain applied to ALL non-spatial output (music, UI, AND the reverb
-    // send above — this stacks multiplicatively with ReverbSendGain for that one), 
-    // applied once in AudioGraphMapper::applyNonSpatialOutputMatrix regardless of which of its
-    // three branches produced the matrix. Use this to balance the whole
-    // non-spatial stream down relative to spatial sound; use ReverbSendGain to
-    // fine-tune reverb specifically on top of that. 1.0 = unchanged.
+    // Overall level for the whole non-spatial stream (music/UI/reverb — stacks with ReverbSendGain
+    // for reverb specifically), applied in applyNonSpatialOutputMatrix. Balance against SpatialGain.
     static constexpr float NonSpatialGain = 0.8f;
 
-    // Overall gain applied to spatial (positioned 3D) sound — footsteps, outdoor
-    // dialogue, ambience — on top of the per-source X3DAudio VolumeMultiplier,
-    // applied in computeGains() before the spherical-harmonics decode. Same role
-    // as NonSpatialGain but for the other stream: use this to balance spatial
-    // sound relative to non-spatial. 1.0 = unchanged.
+    // Overall level for spatial (positioned 3D) sound, on top of X3DAudio's VolumeMultiplier,
+    // applied in computeGains() before the SH decode. Balance against NonSpatialGain.
     static constexpr float SpatialGain = 2.2f;
 
-    // Per-channel calibration gain correcting for the right ear reading slightly
-    // louder than the left. Multiplies every physical channel feeding the
-    // right-ear driver group (bass + 4 small drivers), on both the spatial
-    // (Process()) and non-spatial (buildNonSpatialMatrix()) paths. 1.0 = unchanged.
+    // Calibration: right ear reads slightly louder than left. Multiplies every right-ear driver
+    // channel (bass + 4 small drivers) on both the spatial and non-spatial paths.
     static constexpr float RightEarGain = 0.8f;
 
     // True if the given 1-indexed physical output channel feeds a right-ear
@@ -187,7 +162,7 @@ public:
     STDMETHOD_(void, Process)(UINT32 inputProcessParameterCount, const XAPO_PROCESS_BUFFER_PARAMETERS* pInputProcessParameters, UINT32 outputProcessParameterCount, XAPO_PROCESS_BUFFER_PARAMETERS* pOutputProcessParameters, BOOL isEnabled) override;
 
 private:
-    void computeGains(float azimuthRad, float elevationRad, float volume);
+    void computeGains(float azimuthRad, float elevationRad, float volume, INT64 sourceId, float posX, float posY, float posZ);
 
     static XAPO_REGISTRATION_PROPERTIES _regProps;
 
@@ -204,4 +179,7 @@ private:
     WAVEFORMATEX _inputFormat;
     WAVEFORMATEX _outputFormat;
     HrtfXapoParam _params[3]; // ring buffer as CXAPOParametersBase requires
+
+    // Per-instance, not static: a shared counter would starve out most concurrent sounds' log lines.
+    int _logThrottle = 0;
 };

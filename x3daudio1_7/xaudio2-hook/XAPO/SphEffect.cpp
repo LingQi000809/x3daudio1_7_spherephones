@@ -327,14 +327,9 @@ ChannelMatrix SphXapoEffect::buildNonSpatialMatrix(const ChannelMatrix& sourceMa
 
     for (UINT32 src = 0; src < srcCount; ++src)
     {
-        // The client matrix isn't always plain stereo: this game creates its
-        // mastering voice for 6 channels (5.1), so per-source matrices here
-        // follow the standard XAudio2/WAVEFORMATEXTENSIBLE 5.1 order
-        // FL,FR,FC,LFE,BL,BR rather than just FL,FR. Reading only channels 0/1
-        // silently drops anything the client put in Center (where dialogue is
-        // conventionally mixed) or the rear channels. Fold Center and rear
-        // into L/R, and feed LFE straight into the bass drivers below — it's
-        // already non-directional, so it doesn't need the point-source decode.
+        // Not plain stereo: the game's mastering voice is 6ch (5.1, FL/FR/FC/LFE/BL/BR), so
+        // reading only channels 0/1 would silently drop Center (where dialogue usually is)
+        // and the rears. Fold Center/rear into L/R; LFE goes straight to bass, no decode needed.
         auto chWeight = [&](UINT32 ch) { return (destCount > ch) ? sourceMatrix.GetValue(src, ch) : 0.0f; };
 
         const float fl  = chWeight(0);
@@ -382,10 +377,8 @@ ChannelMatrix SphXapoEffect::buildNonSpatialMatrix(const ChannelMatrix& sourceMa
     return matrix;
 }
 
-// Passes signals below limiterKnee through unchanged; soft-curves anything
-// above it to ±1 using tanh only in that small headroom region.
-// Unlike a full tanh, most of the waveform stays linear so loudness and
-// clarity are preserved — only genuine peaks get rounded.
+// Passes signal below limiterKnee unchanged; soft-curves anything above it to ±1 with tanh,
+// so only genuine peaks get rounded instead of squashing the whole waveform.
 static constexpr float limiterKnee = 0.9f;
 static inline float limitOutput(float x)
 {
@@ -437,7 +430,7 @@ HRESULT SphXapoEffect::LockForProcess(
 }
 
 // bridge the X3DAudio coordinate system (azimuth in radians, +right) to the physics convention the SH math expects (+left)
-void SphXapoEffect::computeGains(float azimuthRad, float elevationRad, float volume)
+void SphXapoEffect::computeGains(float azimuthRad, float elevationRad, float volume, INT64 sourceId, float posX, float posY, float posZ)
 {
     // Negate azimuth: X3DAudio gives +az=right, getRSH expects +az=left (physics convention).
     float src_dir_deg[2] = {-azimuthRad * (180.0f / 3.14159265358979323846f),
@@ -447,11 +440,10 @@ void SphXapoEffect::computeGains(float azimuthRad, float elevationRad, float vol
     float compressedVolume = std::pow(std::max(0.0f, volume), volumeCurveExponent) * SpatialGain;
     _engine.setObjectRSH(Y_src, EnableSpatialSound ? compressedVolume : 0.0f);
 
-    static int throttle = 0;
-    if (++throttle >= 100)
+    if (++_logThrottle >= 100)
     {
-        throttle = 0;
-        logger::logSpatialGains(src_dir_deg[0], src_dir_deg[1], compressedVolume, _lastOutput, _peakOutput, SphericalHarmonicsEngine::kNumDrivers);
+        _logThrottle = 0;
+        logger::logSpatialGains(sourceId, posX, posY, posZ, src_dir_deg[0], src_dir_deg[1], compressedVolume, _lastOutput, _peakOutput, SphericalHarmonicsEngine::kNumDrivers);
         std::fill(std::begin(_peakOutput), std::end(_peakOutput), 0.0f);
     }
 }
@@ -477,7 +469,8 @@ void SphXapoEffect::Process(
 
     if (IsEnabled && isInputValid)
     {
-        computeGains(params->Azimuth, params->Elevation, params->VolumeMultiplier);
+        computeGains(params->Azimuth, params->Elevation, params->VolumeMultiplier,
+                     params->SourceId, params->EmitterPosX, params->EmitterPosY, params->EmitterPosZ);
 
         const UINT32 inCh = _inputFormat.nChannels;
         for (UINT32 n = 0; n < frameCount; ++n)

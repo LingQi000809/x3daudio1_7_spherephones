@@ -7,11 +7,9 @@
 #include "graph/ISpatializedDataExtractor.h"
 #include "logger.h"
 
-// Divides the distance fed into the emitter's volume curve (not the reported
-// spatialData.distance, and not azimuth/elevation) so sounds come out louder
-// by making the game's own attenuation curve think the emitter is closer,
-// instead of multiplying VolumeMultiplier afterward where headroom can run out
-// and clip. 1.0 = no change; > 1.0 makes everything sound closer/louder.
+// Divides the distance fed into the volume curve (not spatialData.distance/azimuth/elevation)
+// so the curve thinks the emitter is closer — avoids multiplying VolumeMultiplier afterward,
+// which is where headroom runs out and clips. 1.0 = no change.
 constexpr float volumeDistanceDivider = 1.5f;
 
 inline math::vector3 to_vector3(const X3DAUDIO_VECTOR & vector)
@@ -146,6 +144,10 @@ inline SpatialData CommonX3DAudioCalculate(float speedOfSound, const X3DAUDIO_LI
 	spatialData.azimuth = distance > std::numeric_limits<float>::epsilon() ? std::atan2(relative_position[0], relative_position[2]) : 0.0f;
 	spatialData.elevation = distance > std::numeric_limits<float>::epsilon() ? std::asin(math::normalize(relative_position)[1]) : 0.0f;
 	spatialData.distance = distance;
+	// Diagnostic-only; no pContext exists on this X3DAudio 1.7 emitter, so position is the closest thing to an id here.
+	spatialData.emitterPosX = pEmitter->Position.x;
+	spatialData.emitterPosY = pEmitter->Position.y;
+	spatialData.emitterPosZ = pEmitter->Position.z;
 
 	// Throttled instrumentation for tuning volumeDistanceDivider by ear against
 	// real values. rawVolumeMultiplier is what volume_multiplier would be
@@ -157,7 +159,10 @@ inline SpatialData CommonX3DAudioCalculate(float speedOfSound, const X3DAUDIO_LI
 	{
 		distanceLogThrottle = 0;
 		const float rawVolumeMultiplier = sample_curve(pEmitter->pVolumeCurve, pEmitter->CurveDistanceScaler, distance);
-		logger::logRelease(L"[x3daudio-distance] distance=", distance, L" dividedDistance=", dividedDistance,
+		logger::logRelease(L"[x3daudio-distance] pos=(", pEmitter->Position.x, L",", pEmitter->Position.y, L",", pEmitter->Position.z, L")",
+			L" distance=", distance, L" dividedDistance=", dividedDistance,
+			L" azimuthDeg=", spatialData.azimuth * (180.0f / 3.14159265358979323846f),
+			L" elevationDeg=", spatialData.elevation * (180.0f / 3.14159265358979323846f),
 			L" pEmitter->CurveDistanceScaler=", pEmitter->CurveDistanceScaler, L" pEmitter->pVolumeCurve=", pEmitter->pVolumeCurve,
 			L" rawVolumeMultiplier=", rawVolumeMultiplier, L" spatialData.volume_multiplier=", spatialData.volume_multiplier);
 	}

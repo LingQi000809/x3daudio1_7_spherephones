@@ -276,22 +276,16 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 
 		const auto spatializedData = _spatializedDataExtractor.ExtractSpatialData(source, pDestinationProxy);
 
-		// Confirmed via testing: footsteps and outdoor NPC dialogue land here
-		// (the game computes a real 3D position for them via X3DAudio), and get
-		// routed through SphXapoEffect::Process() with the HRTF effect chain
-		// below. Indoor dialogue, music, and UI sounds don't get a 3D position
-		// from the game at all and fall through to the non-spatial branch
-		// further down instead — see the comment there for what that path does.
+		// Confirmed via testing: footsteps and outdoor NPC dialogue get a real 3D position from
+		// the game and land here. Indoor dialogue, music, and UI don't — see the non-spatial branch below.
 		if (spatializedData.present)
 		{
-			// Throttled instrumentation: confirms by log which path a given sound
-			// takes and whether that stream's toggle is currently on. Throttled
-			// since spatial sounds can re-call SetOutputMatrix every frame while moving.
-			static int spatialLogThrottle = 0;
-			if (++spatialLogThrottle >= 60)
+			// Per-node throttle so busy scenes don't starve out concurrent sources; node= matches emitter= in spatial_debug.txt.
+			if (++node->logThrottle >= 60)
 			{
-				spatialLogThrottle = 0;
+				node->logThrottle = 0;
 				logger::logRelease(L"[audio-path] SPATIAL node=", node, L" destinationNode=", destinationNode,
+					L" pos=(", spatializedData.emitterPosX, L",", spatializedData.emitterPosY, L",", spatializedData.emitterPosZ, L")",
 					L" node->mainOutputChannelsCount=", node->mainOutputChannelsCount,
 					L" destinationNode->inputChannelsCount=", destinationNode->inputChannelsCount,
 					L" EnableSpatialSound=", SphXapoEffect::EnableSpatialSound,
@@ -330,6 +324,10 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 			params.Elevation = spatializedData.elevation;
 			params.Azimuth = spatializedData.azimuth;
 			params.Distance = spatializedData.distance;
+			params.SourceId = reinterpret_cast<INT64>(node);
+			params.EmitterPosX = spatializedData.emitterPosX;
+			params.EmitterPosY = spatializedData.emitterPosY;
+			params.EmitterPosZ = spatializedData.emitterPosZ;
 
 			tailVoiceDescriptor.voice->SetEffectParameters(0, &params, sizeof(params), XAUDIO2_COMMIT_NOW);
 			tailVoiceDescriptor.voice->EnableEffect(0, XAUDIO2_COMMIT_NOW);
@@ -347,22 +345,14 @@ void AudioGraphMapper::setupCommonCallbacks(XAudio2VoiceProxy* proxyVoice, const
 				tailVoiceDescriptor.isSpatialized = false;
 			}
 
-			// This branch isn't just music/UI sounds — logging clientMatrix here
-			// during a play session showed indoor NPC dialogue lands here too
-			// (clientMatrix.GetDestinationCount() == 6, i.e. a 5.1-shaped matrix),
-			// while outdoor dialogue goes through the spatializedData.present
-			// branch above instead. Looks like the game only computes a real 3D
-			// position for outdoor dialogue; indoors it's mixed the same
-			// non-positional way as music/UI, just via Center instead of L/R.
-			// See SphXapoEffect::buildNonSpatialMatrix for how that 5.1 matrix
-			// gets folded into our 10 physical channels.
+			// Not just music/UI: indoor NPC dialogue lands here too (confirmed via testing, 5.1-shaped
+			// clientMatrix) — the game only computes a real 3D position for outdoor dialogue.
 			auto clientMatrix = source->getOutputMatrix(pDestinationProxy);
 
-			// Throttled instrumentation, pairs with the SPATIAL log above.
-			static int nonSpatialLogThrottle = 0;
-			if (++nonSpatialLogThrottle >= 60)
+			// Pairs with the SPATIAL log above. A sound only ever landing here never got a 3D position from the game.
+			if (++node->nonSpatialLogThrottle >= 60)
 			{
-				nonSpatialLogThrottle = 0;
+				node->nonSpatialLogThrottle = 0;
 				logger::logRelease(L"[audio-path] NON-SPATIAL node=", node, L" destinationNode=", destinationNode,
 					L" node->mainOutputChannelsCount=", node->mainOutputChannelsCount,
 					L" destinationNode->inputChannelsCount=", destinationNode->inputChannelsCount,
@@ -421,16 +411,10 @@ void AudioGraphMapper::resetSendsForVoice(XAudio2VoiceProxy* proxyVoice)
 		Node* sendNode = getNodeForProxyVoice(proxySend.pOutputVoice);
 		auto tailVoice = createTailVoice(node, sendNode, effect_chain());
 
-		// Apply a spherephone-aware default matrix right away. Until/unless the
-		// client explicitly calls SetOutputMatrix (handled in onSetOutputMatrix
-		// below), this connection would otherwise sit on XAudio2's own built-in
-		// default mix matrix, which has no notion of the spherephone's 10-channel
-		// layout. Confirmed by logging this and onSetOutputMatrix side by side:
-		// most non-spatial connections (UI sounds, indoor dialogue) DO call
-		// SetOutputMatrix moments after connecting and immediately overwrite this
-		// default — but background music doesn't call it at all, so without this
-		// proactive default it would have been stuck on XAudio2's generic mix
-		// matrix for its entire lifetime.
+		// Apply a spherephone-aware default matrix right away, rather than leaving XAudio2's
+		// generic default (no notion of our 10-channel layout) until SetOutputMatrix is called.
+		// Confirmed via testing: background music never calls SetOutputMatrix at all, so without
+		// this it would be stuck on the generic matrix for its whole lifetime.
 		const UINT32 srcChannels = node->mainOutputChannelsCount;
 		ChannelMatrix identityMatrix(srcChannels, srcChannels);
 		for (UINT32 c = 0; c < srcChannels; ++c)
@@ -483,10 +467,7 @@ void AudioGraphMapper::applyNonSpatialOutputMatrix(Node* destinationNode, IXAudi
 		throw std::logic_error("Sender output channels count does not match sendee input channels count and sendee input channels count is not 2 or 10. That should not have happened.");
 	}
 
-	// Overall non-spatial gain, applied regardless of which branch above built
-	// the matrix (music/UI/indoor-dialogue via buildNonSpatialMatrix, the
-	// reverb passthrough — stacking with ReverbSendGain there — or the stereo
-	// downmix). See SphXapoEffect::NonSpatialGain.
+	// Overall non-spatial gain, regardless of which branch above built the matrix. See NonSpatialGain.
 	for (UINT32 s = 0; s < matrix.GetSourceCount(); ++s)
 		for (UINT32 d = 0; d < matrix.GetDestinationCount(); ++d)
 			matrix.SetValue(s, d, matrix.GetValue(s, d) * SphXapoEffect::NonSpatialGain);

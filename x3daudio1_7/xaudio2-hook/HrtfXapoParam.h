@@ -13,4 +13,10 @@ struct HrtfXapoParam
 
 	// distance to the source [0; +inf)
 	float Distance;
+
+	// Diagnostic-only: AudioGraphMapper's Node* for this voice, and emitter position, for tagging log lines.
+	INT64 SourceId;
+	float EmitterPosX;
+	float EmitterPosY;
+	float EmitterPosZ;
 };

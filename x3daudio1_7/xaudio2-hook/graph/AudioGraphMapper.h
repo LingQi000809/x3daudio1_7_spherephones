@@ -47,6 +47,10 @@ public:
 	UINT32 inputChannelsCount;
 	UINT32 inputSampleRate;
 	UINT32 mainOutputChannelsCount;
+
+	// Per-node throttles for the [audio-path] logs — a shared counter would starve out concurrent voices.
+	int logThrottle = 0;
+	int nonSpatialLogThrottle = 0;
 };
 
 class AudioGraphMapper

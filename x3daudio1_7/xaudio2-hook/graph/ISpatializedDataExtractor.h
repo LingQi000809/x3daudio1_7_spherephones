@@ -13,6 +13,11 @@ struct SpatialData
 	float elevation = 0.0f;
 	float azimuth = 0.0f;
 	float distance = 0.0f;
+
+	// Diagnostic-only raw emitter position, for cross-referencing log lines against in-game locations.
+	float emitterPosX = 0.0f;
+	float emitterPosY = 0.0f;
+	float emitterPosZ = 0.0f;
 };
 
 class ISpatializedDataExtractor

@@ -40,5 +40,7 @@ namespace logger
 		details::log(ss.str());
 	}
 
-	void logSpatialGains(float azDeg, float elDeg, float effectiveMultiplier, const float* snap, const float* peak, int numGains);
+	// sourceId/pos tag which source this line came from, for telling concurrent sounds apart.
+	void logSpatialGains(INT64 sourceId, float posX, float posY, float posZ,
+		float azDeg, float elDeg, float effectiveMultiplier, const float* snap, const float* peak, int numGains);
 }
