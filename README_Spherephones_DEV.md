@@ -141,3 +141,8 @@ This mod allows C++ SKSE plugins to work across almost all game versions.
 2. Launch through MO2 (not directly via Steam — that bypasses MO2's VFS and Root Builder's deployment).
 3. Confirm Root Builder actually deployed the file: while Skyrim is running, check the real Skyrim SE install folder in Explorer — `x3daudio1_7.dll` should be sitting there next to `SkyrimSE.exe`.
 5. Load into a save or start a new game, and get to an area with varied ambient/directional sound (a city street, a dungeon with dripping water, combat with multiple enemies — anything with several simultaneous sound sources).
+
+
+# Trouble-shooting
+## Game version mismatch
+In Steam, we have already set to wait for updates until we launch the game, and we have [locked our App Manifest file](https://www.reddit.com/r/skyrimmods/comments/b158op/keep_skyrim_se_from_updating_safely_and/). However, if a new game patch breaks SKSE compatibility, use the [Skyrim Downgrade Tool (SDT)](https://www.nexusmods.com/skyrimspecialedition/mods/188916) to roll the game back to 1.6.1170, the version our mod has been tested on. SDT is in the `Modding` folder on the lab computer, and the steps are explained on its mod page and in the included `.bat` file.
